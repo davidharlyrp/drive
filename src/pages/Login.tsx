@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Cloud, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { pb } from '../lib/pb';
@@ -39,9 +39,8 @@ export default function Login() {
                 <div className="absolute -top-10 -right-10 w-40 h-40 bg-brand/5 blur-3xl rounded-full pointer-events-none"></div>
 
                 <div className="flex flex-col items-center mb-8 z-10 relative">
-                    <div className="w-14 h-14 bg-indigo-50 rounded-xl flex items-center justify-center mb-4 border border-indigo-100 shadow-sm">
-                        <Cloud className="w-7 h-7 text-brand" />
-                    </div>
+                    <img src="/logo.png" alt="Logo" className="w-14 h-14 mb-4" />
+
                     <h1 className="text-xl font-bold text-surface-900">
                         {isRegistering ? 'Create Account' : 'Welcome Back'}
                     </h1>
@@ -94,7 +93,7 @@ export default function Login() {
             </div>
 
             <p className="mt-8 text-[11px] font-bold font-mono text-surface-400 uppercase tracking-wider">
-                Daharin Cloud Drive &copy; 2026
+                Daharin Cloud &copy; 2026
             </p>
         </div>
     );
