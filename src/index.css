@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+@theme {
+  --color-army: #4B5320;
+  --color-army-dark: #3a4118;
+  --color-army-light: #6a742c;
+
+  --color-mono-50: #f4f4f4;
+  --color-mono-100: #e0e0e0;
+  --color-mono-200: #c2c2c2;
+  --color-mono-300: #a3a3a3;
+  --color-mono-400: #858585;
+  --color-mono-500: #666666;
+  --color-mono-600: #525252;
+  --color-mono-700: #3d3d3d;
+  --color-mono-800: #292929;
+  --color-mono-900: #141414;
+  --color-mono-950: #0a0a0a;
+
+  /* Font styling per user instruction: Inter or system fonts, no huge fonts, no extreme tracking/blackness. */
+  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* User Rules: 
+   1. Avoid uppercase tracking-widest font-black.
+   2. Avoid huge texts.
+   3. "Compact" gaps, minimal rounded corners.
+   4. Clean, neat, minimalist, compact.
+   5. Dark monochrome + army green.
+*/
+
+html,
+body {
+  @apply bg-mono-950 text-mono-100 font-sans antialiased text-sm h-full w-full overflow-hidden;
+}
+
+#root {
+  @apply h-full w-full;
+}
+
+/* Base utilities for "compact" and "minim rounded" */
+@layer utilities {
+  .rounded-compact {
+    @apply rounded-sm;
+    /* Minimal rounded */
+  }
+
+  .card-container {
+    @apply bg-mono-900 border border-mono-800 rounded-sm p-3;
+    /* Compact padding */
+  }
+
+  .input-compact {
+    @apply bg-mono-900 border border-mono-700 text-mono-100 text-sm px-2 py-1.5 focus:outline-none focus:border-army hover:border-mono-600 transition-colors;
+  }
+
+  .btn-primary {
+    @apply bg-army hover:bg-army-light text-white text-sm px-3 py-1.5 transition-colors flex items-center justify-center gap-1.5 cursor-pointer;
+  }
+
+  .btn-secondary {
+    @apply bg-mono-800 hover:bg-mono-700 text-mono-100 text-sm px-3 py-1.5 transition-colors border border-mono-700 flex items-center justify-center gap-1.5 cursor-pointer;
+  }
+
+  .btn-ghost {
+    @apply hover:bg-mono-800 text-mono-300 hover:text-white text-sm px-2 py-1.5 transition-colors flex items-center justify-center gap-1.5 cursor-pointer;
+  }
+
+  /* Scrollbar styling for dark mode */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-mono-950;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-mono-800 rounded-sm;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-mono-700;
+  }
+}
