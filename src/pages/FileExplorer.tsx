@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Trash2, Edit2, MoreVertical, LayoutGrid, List, CheckSquare, Square, HardDrive, Plus, Upload, FolderPlus, ArrowDownUp, ArrowDown, ArrowUp, Type, Calendar, Database, FileText, Download, FolderInput, File as FileIcon, Folder as FolderIcon } from 'lucide-react';
+import { Trash2, Edit2, MoreVertical, LayoutGrid, List, CheckSquare, Square, HardDrive, Plus, Upload, FolderPlus, ArrowDownUp, ArrowDown, ArrowUp, Type, Calendar, Database, FileText, Download, FolderInput, Star, File as FileIcon, Folder as FolderIcon } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStorage } from '../hooks/useStorage';
 import type { RecordModel } from 'pocketbase';
@@ -15,12 +15,14 @@ import { moveToTrash } from '../utils/trashHelper';
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
 import { downloadItemsAsZip, downloadSingleFile, type DownloadTask } from '../utils/downloadHelper';
 import { DownloadProgressModal } from '../components/DownloadProgressModal';
+import { toggleStarred } from '../utils/starredHelper';
 
 export default function FileExplorer() {
     const { folderId } = useParams();
     const navigate = useNavigate();
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const { folders, files, breadcrumbs, loading, refetch } = useStorage(folderId || 'root');
+    const { folders, files, breadcrumbs, loading, loadingMore, hasMore, loadMore, totalFiles, refetch } = useStorage(folderId || 'root');
+    const loadMoreRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { user, token, updateStorage } = useAuthStore();
     const { gridColumns } = useSettingsStore();
@@ -81,6 +83,26 @@ export default function FileExplorer() {
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, []);
+
+    // Intersection Observer for infinite scroll
+    useEffect(() => {
+        if (!hasMore || loading || loadingMore) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    loadMore();
+                }
+            },
+            { threshold: 1.0, rootMargin: '100px' }
+        );
+
+        if (loadMoreRef.current) {
+            observer.observe(loadMoreRef.current);
+        }
+
+        return () => observer.disconnect();
+    }, [hasMore, loading, loadingMore, loadMore]);
 
     // Clear selection on folder change
     useEffect(() => {
@@ -253,7 +275,7 @@ export default function FileExplorer() {
     const confirmDeleteItems = async () => {
         setDeleteModal(prev => ({ ...prev, isDeleting: true }));
         try {
-            await moveToTrash(deleteModal.items);
+            await moveToTrash(deleteModal.items, user!.id);
             setSelectedItems([]);
             refetch();
             updateStorage();
@@ -375,30 +397,61 @@ export default function FileExplorer() {
                     <HardDrive size={16} />
                     My Files
                 </span>
-                {breadcrumbs.map((crumb) => (
-                    <div key={crumb.id} className="flex items-center">
-                        <span className="mx-3 text-surface-300">/</span>
-                        <span
-                            className={`hover:text-brand cursor-pointer transition-colors ${crumb.id === folderId ? 'text-brand font-semibold' : 'font-medium'}`}
-                            onClick={() => navigate(`/files/${crumb.id}`)}
-                        >
-                            {crumb.name}
-                        </span>
-                    </div>
-                ))}
+                {/* Breadcrumbs */}
+                {breadcrumbs.length > 2 ? (
+                    <>
+                        <div className="flex items-center">
+                            <span className="mx-3 text-surface-300">/</span>
+                            <span className="text-surface-300 font-medium px-1">...</span>
+                        </div>
+                        <div className="flex items-center">
+                            <span className="mx-3 text-surface-300">/</span>
+                            <span
+                                className="hover:text-brand cursor-pointer transition-colors font-medium max-w-[120px] truncate"
+                                onClick={() => navigate(`/files/${breadcrumbs[breadcrumbs.length - 2].id}`)}
+                                title={breadcrumbs[breadcrumbs.length - 2].name}
+                            >
+                                {breadcrumbs[breadcrumbs.length - 2].name}
+                            </span>
+                        </div>
+                        <div className="flex items-center">
+                            <span className="mx-3 text-surface-300">/</span>
+                            <span
+                                className="text-brand font-semibold cursor-pointer transition-colors max-w-[150px] truncate"
+                                onClick={() => navigate(`/files/${breadcrumbs[breadcrumbs.length - 1].id}`)}
+                                title={breadcrumbs[breadcrumbs.length - 1].name}
+                            >
+                                {breadcrumbs[breadcrumbs.length - 1].name}
+                            </span>
+                        </div>
+                    </>
+                ) : (
+                    breadcrumbs.map((crumb) => (
+                        <div key={crumb.id} className="flex items-center">
+                            <span className="mx-3 text-surface-300">/</span>
+                            <span
+                                className={`hover:text-brand cursor-pointer transition-colors max-w-[150px] truncate ${crumb.id === folderId ? 'text-brand font-semibold' : 'font-medium'}`}
+                                onClick={() => navigate(`/files/${crumb.id}`)}
+                                title={crumb.name}
+                            >
+                                {crumb.name}
+                            </span>
+                        </div>
+                    ))
+                )}
                 {loading && breadcrumbs.length === 0 && folderId !== 'root' && (
                     <span className="mx-3 text-surface-300 animate-pulse">/ ...</span>
                 )}
             </div>
 
             {/* Toolbar */}
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-surface-200">
-                <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-between md:gap-4 gap-2 mb-2 md:mb-8 pb-2 md:pb-6 border-b border-surface-200">
+                <div className="flex items-center md:gap-3 gap-2">
                     <div className="relative">
                         <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileUpload} />
                         <button className="btn-primary" onClick={() => setShowAddMenu(!showAddMenu)}>
                             <Plus size={18} />
-                            <span>Add</span>
+                            <span className="hidden md:block">Add</span>
                         </button>
                         {showAddMenu && (
                             <>
@@ -428,7 +481,7 @@ export default function FileExplorer() {
                     </div>
                     <button className="btn-secondary" onClick={handleCreateFolder}>
                         <FolderPlus size={18} />
-                        <span>New Folder</span>
+                        <span className="hidden md:block">New Folder</span>
                     </button>
                     {(sortedFolders.length > 0 || sortedFiles.length > 0) && (
                         <button
@@ -440,7 +493,7 @@ export default function FileExplorer() {
                             ) : (
                                 <Square size={18} />
                             )}
-                            <span>{selectedItems.length === (sortedFolders.length + sortedFiles.length) && (sortedFolders.length + sortedFiles.length) > 0 ? 'Deselect All' : 'Select All'}</span>
+                            <span className="hidden md:block">{selectedItems.length === (sortedFolders.length + sortedFiles.length) && (sortedFolders.length + sortedFiles.length) > 0 ? 'Deselect All' : 'Select All'}</span>
                         </button>
                     )}
                     {selectedItems.length > 0 && (
@@ -458,14 +511,14 @@ export default function FileExplorer() {
                                 }}
                             >
                                 <FolderInput size={18} className="text-brand" />
-                                <span>Move ({selectedItems.length})</span>
+                                <span className="hidden md:block">Move ({selectedItems.length})</span>
                             </button>
                             <button
                                 className="flex items-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-xl transition-all text-sm font-medium shadow-sm shadow-red-100/50 active:scale-95"
                                 onClick={handleBatchDelete}
                             >
                                 <Trash2 size={18} />
-                                <span>Delete ({selectedItems.length})</span>
+                                <span className="hidden md:block">Delete ({selectedItems.length})</span>
                             </button>
                             <button
                                 className="flex items-center gap-2 px-4 py-2 bg-brand/10 hover:bg-brand/20 text-brand border border-brand/20 rounded-xl transition-all text-sm font-medium shadow-sm active:scale-95"
@@ -482,7 +535,7 @@ export default function FileExplorer() {
                                 }}
                             >
                                 <Download size={18} />
-                                <span>Download Zip</span>
+                                <span className="hidden md:block">Download Zip</span>
                             </button>
                         </div>
                     )}
@@ -570,7 +623,7 @@ export default function FileExplorer() {
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-24 gap-4">
                         <div className="animate-spin w-10 h-10 border-4 border-brand border-t-transparent rounded-full"></div>
-                        <span className="text-xs font-bold text-surface-400 animate-pulse tracking-widest uppercase">Loading files...</span>
+                        <span className="text-xs font-semibold text-surface-400 animate-pulse tracking-widest uppercase">Loading files...</span>
                     </div>
                 ) : sortedFolders.length === 0 && sortedFiles.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 bg-white border border-surface-100 rounded-2xl shadow-soft animate-in fade-in duration-500 mx-auto max-w-2xl mt-12">
@@ -605,7 +658,17 @@ export default function FileExplorer() {
                                     setTotalDownloadFiles(total);
                                     setDownloadTasks(tasks);
                                 })}
-                                onClick={() => handleFolderClick(folder.id)}
+                                onClick={() => {
+                                    if (selectedItems.length > 0) {
+                                        toggleSelection('folder', folder.id);
+                                    } else {
+                                        handleFolderClick(folder.id);
+                                    }
+                                }}
+                                onToggleStar={async () => {
+                                    await toggleStarred([{ type: 'folder', id: folder.id }], !folder.is_starred, user!.id);
+                                    refetch();
+                                }}
                             />
                         ))}
                         {sortedFiles.map(file => (
@@ -624,9 +687,31 @@ export default function FileExplorer() {
                                     items: [{ type: 'file', id: file.id }],
                                     isDeleting: false
                                 })}
-                                onClick={() => setPreviewFile(file)}
+                                onClick={() => {
+                                    if (selectedItems.length > 0) {
+                                        toggleSelection('file', file.id);
+                                    } else {
+                                        setPreviewFile(file);
+                                    }
+                                }}
+                                onToggleStar={async () => {
+                                    await toggleStarred([{ type: 'file', id: file.id }], !file.is_starred, user!.id);
+                                    refetch();
+                                }}
                             />
                         ))}
+                    </div>
+                )}
+
+                {/* Sentinel for infinite scroll */}
+                {hasMore && (
+                    <div ref={loadMoreRef} className="py-8 flex justify-center">
+                        {loadingMore && (
+                            <div className="flex items-center gap-3 text-surface-400">
+                                <div className="animate-spin w-5 h-5 border-2 border-brand border-t-transparent rounded-full"></div>
+                                <span className="text-sm font-medium">Loading more items...</span>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -647,6 +732,9 @@ export default function FileExplorer() {
                         items: [{ type: 'file', id: file.id }],
                         isDeleting: false
                     })}
+                    totalFiles={totalFiles}
+                    hasMore={hasMore}
+                    onLoadMore={loadMore}
                 />
             )}
 
@@ -693,7 +781,7 @@ export default function FileExplorer() {
     );
 }
 
-function FolderItem({ folder, viewMode, onClick, isSelected, onToggleSelect, onRename, onMove, onDelete, onDownloadZip }: { folder: RecordModel, viewMode: 'grid' | 'list', onClick: () => void, isSelected: boolean, onToggleSelect: () => void, onRename: (id: string, name: string) => void, onMove: () => void, onDelete: () => void, onDownloadZip: () => void }) {
+function FolderItem({ folder, viewMode, onClick, isSelected, onToggleSelect, onRename, onMove, onDelete, onDownloadZip, onToggleStar }: { folder: RecordModel, viewMode: 'grid' | 'list', onClick: () => void, isSelected: boolean, onToggleSelect: () => void, onRename: (id: string, name: string) => void, onMove: () => void, onDelete: () => void, onDownloadZip: () => void, onToggleStar: () => void }) {
     const [showMenu, setShowMenu] = useState(false);
 
     const handleDelete = async (e: React.MouseEvent) => {
@@ -742,6 +830,9 @@ function FolderItem({ folder, viewMode, onClick, isSelected, onToggleSelect, onR
                         <>
                             <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}></div>
                             <div className="absolute right-0 mt-2 w-48 bg-white border border-surface-100 rounded-2xl shadow-premium z-20 py-2 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={(e) => { e.stopPropagation(); onToggleStar(); setShowMenu(false); }}>
+                                    <Star size={16} className={folder.is_starred ? "text-amber-500 fill-amber-500" : "text-surface-400"} /> {folder.is_starred ? 'Unstar' : 'Star'}
+                                </button>
                                 <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={handleRenameClick}>
                                     <Edit2 size={16} className="text-surface-400" /> Rename
                                 </button>
@@ -787,6 +878,9 @@ function FolderItem({ folder, viewMode, onClick, isSelected, onToggleSelect, onR
                         <>
                             <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}></div>
                             <div className="absolute right-0 top-10 w-48 bg-white border border-surface-100 rounded-2xl shadow-premium z-20 py-2 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={(e) => { e.stopPropagation(); onToggleStar(); setShowMenu(false); }}>
+                                    <Star size={16} className={folder.is_starred ? "text-amber-500 fill-amber-500" : "text-surface-400"} /> {folder.is_starred ? 'Unstar' : 'Star'}
+                                </button>
                                 <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={handleRenameClick}>
                                     <Edit2 size={16} className="text-surface-400" /> Rename
                                 </button>
@@ -816,7 +910,7 @@ function FolderItem({ folder, viewMode, onClick, isSelected, onToggleSelect, onR
     );
 }
 
-function FileItem({ file, viewMode, onClick, isSelected, onToggleSelect, onRename, onMove, onDelete }: { file: RecordModel, viewMode: 'grid' | 'list', onClick: () => void, isSelected: boolean, onToggleSelect: () => void, onRename: (id: string, name: string) => void, onMove: () => void, onDelete: () => void }) {
+function FileItem({ file, viewMode, onClick, isSelected, onToggleSelect, onRename, onMove, onDelete, onToggleStar }: { file: RecordModel, viewMode: 'grid' | 'list', onClick: () => void, isSelected: boolean, onToggleSelect: () => void, onRename: (id: string, name: string) => void, onMove: () => void, onDelete: () => void, onToggleStar: () => void }) {
     const [showMenu, setShowMenu] = useState(false);
     const isImage = file.type?.startsWith('image/') || false;
     const isVideo = file.type?.startsWith('video/') || false;
@@ -884,6 +978,9 @@ function FileItem({ file, viewMode, onClick, isSelected, onToggleSelect, onRenam
                         <>
                             <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}></div>
                             <div className="absolute right-0 mt-2 w-48 bg-white border border-surface-100 rounded-2xl shadow-premium z-20 py-2 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={(e) => { e.stopPropagation(); onToggleStar(); setShowMenu(false); }}>
+                                    <Star size={16} className={file.is_starred ? "text-amber-500 fill-amber-500" : "text-surface-400"} /> {file.is_starred ? 'Unstar' : 'Star'}
+                                </button>
                                 <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={handleDownload}>
                                     <Download size={16} className="text-surface-400" /> Download
                                 </button>
@@ -929,6 +1026,9 @@ function FileItem({ file, viewMode, onClick, isSelected, onToggleSelect, onRenam
                         <>
                             <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}></div>
                             <div className="absolute right-0 top-10 w-48 bg-white border border-surface-100 rounded-2xl shadow-premium z-20 py-2 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={(e) => { e.stopPropagation(); onToggleStar(); setShowMenu(false); }}>
+                                    <Star size={16} className={file.is_starred ? "text-amber-500 fill-amber-500" : "text-surface-400"} /> {file.is_starred ? 'Unstar' : 'Star'}
+                                </button>
                                 <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={handleDownload}>
                                     <Download size={16} className="text-surface-400" /> Download
                                 </button>

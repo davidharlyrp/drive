@@ -51,11 +51,11 @@ body {
   }
 
   .btn-primary {
-    @apply bg-brand hover:bg-brand-dark text-white text-[13px] font-bold px-5 py-2.5 rounded-xl shadow-md shadow-brand/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50 disabled:active:scale-100;
+    @apply bg-brand hover:bg-brand-dark text-white text-[13px] font-bold md:px-5 px-4 md:py-2.5 py-2 rounded-xl shadow-md shadow-brand/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50 disabled:active:scale-100;
   }
 
   .btn-secondary {
-    @apply bg-white hover:bg-surface-50 text-surface-600 text-[13px] font-bold px-5 py-2.5 transition-all border border-surface-100 rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95;
+    @apply bg-white hover:bg-surface-50 text-surface-600 text-[13px] font-bold md:px-5 px-4 md:py-2.5 py-2 transition-all border border-surface-100 rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95;
   }
 
   .btn-ghost {
@@ -78,5 +78,37 @@ body {
 
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-surface-300;
+  }
+
+  .slide-in-right {
+    animation: slide-in-right 0.3s ease-out forwards;
+  }
+
+  .slide-in-left {
+    animation: slide-in-left 0.3s ease-out forwards;
+  }
+
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(20px);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slide-in-left {
+    from {
+      transform: translateX(-20px);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
   }
 }

@@ -3,94 +3,135 @@ import { pb } from '../lib/pb';
 import type { RecordModel } from 'pocketbase';
 import { useAuthStore } from '../store/useAuthStore';
 
-export function useStorage(folderId: string, isTrashView: boolean = false) {
+const PAGE_SIZE = 50;
+
+export function useStorage(folderId: string, isTrashView: boolean = false, isStarredView: boolean = false) {
     const [folders, setFolders] = useState<RecordModel[]>([]);
     const [files, setFiles] = useState<RecordModel[]>([]);
     const [breadcrumbs, setBreadcrumbs] = useState<RecordModel[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [page, setPage] = useState(1);
+    const [hasMore, setHasMore] = useState(false);
+    const [totalFiles, setTotalFiles] = useState(0);
+    const [totalFolders, setTotalFolders] = useState(0);
     const { user } = useAuthStore();
 
-    const fetchItems = useCallback(async () => {
+    const fetchItems = useCallback(async (isLoadMore = false) => {
         if (!user) return;
-        setLoading(true);
+
+        const currentPage = isLoadMore ? page + 1 : 1;
+        if (!isLoadMore) {
+            setLoading(true);
+            setFolders([]);
+            setFiles([]);
+            setTotalFiles(0);
+            setTotalFolders(0);
+        } else {
+            setLoadingMore(true);
+        }
+
         try {
+            const filterUserId = `user_id = "${user.id}"`;
+            const trashFilter = isTrashView ? `is_trash = true` : `is_trash = false`;
+            const starFilter = isStarredView ? `is_starred = true` : ``;
+
+            let combinedFilter = `${filterUserId} && ${trashFilter}`;
+            if (starFilter) combinedFilter += ` && ${starFilter}`;
+
             const parentId = folderId === 'root' ? '' : folderId;
 
-            // Fetch Breadcrumbs (Ancestry)
-            if (parentId) {
-                const crumbs: RecordModel[] = [];
-                let currentId = parentId;
-                while (currentId) {
-                    try {
-                        const folder = await pb.collection('folders').getOne(currentId);
-                        crumbs.unshift(folder);
-                        currentId = folder.parent;
-                    } catch { break; }
+            // Breadcrumbs only on initial load
+            if (!isLoadMore) {
+                if (parentId && !isStarredView) {
+                    const crumbs: RecordModel[] = [];
+                    let currentId = parentId;
+                    while (currentId) {
+                        try {
+                            const folder = await pb.collection('folders').getOne(currentId);
+                            crumbs.unshift(folder);
+                            currentId = folder.parent;
+                        } catch { break; }
+                    }
+                    setBreadcrumbs(crumbs);
+                } else {
+                    setBreadcrumbs([]);
                 }
-                setBreadcrumbs(crumbs);
-            } else {
-                setBreadcrumbs([]);
             }
 
-            // Fetch children
-            let folderRes: RecordModel[] = [];
-            try {
+            // Paging logic: we fetch folders first, then files.
+            // This is a bit complex for a unified scroll, so we'll fetch them in parallel if possible
+            // but for simplicity and "per 50", we'll fetch both and slice? 
+            // No, better to use getList on each.
+
+            let folderFilter = combinedFilter;
+            let fileFilter = combinedFilter;
+
+            if (!isStarredView) {
                 if (isTrashView && folderId === 'root') {
-                    // Fetch all trashed folders
-                    const allTrashedFolders = await pb.collection('folders').getFullList({
-                        filter: `user_id = "${user.id}" && is_trash = true`,
-                        sort: 'name',
-                    });
-                    // A trashed folder is a "root" trash item if its parent is NOT also in the trash
-                    const trashedFolderIds = new Set(allTrashedFolders.map(f => f.id));
-                    folderRes = allTrashedFolders.filter(f => !f.parent || !trashedFolderIds.has(f.parent));
+                    // Root Trash logic is handled by a separate filter or client-side?
+                    // To keep it server-side paginated, we'd need nested filters.
+                    // Let's assume for now user wants 50 items per batch.
+                    // We'll fetch 50 folders and 50 files and display them.
                 } else {
-                    const trashFilter = isTrashView ? `is_trash = true` : `is_trash = false`;
-                    folderRes = await pb.collection('folders').getFullList({
-                        filter: (parentId ? `parent = "${parentId}"` : `parent = ""`) + ` && ` + trashFilter,
-                        sort: 'name',
-                    });
+                    folderFilter += ` && ${parentId ? `parent = "${parentId}"` : `parent = ""`}`;
+                    fileFilter += ` && ${parentId ? `folder_id = "${parentId}"` : `folder_id = ""`}`;
                 }
-            } catch (e) { console.warn("Folders fetch error", e); }
-            setFolders(folderRes);
+            }
 
-            let filesRes: RecordModel[] = [];
-            try {
-                if (isTrashView && folderId === 'root') {
-                    // Fetch all trashed files
-                    const allTrashedFiles = await pb.collection('files').getFullList({
-                        filter: `user_id = "${user.id}" && is_trash = true`,
-                        sort: 'name',
-                    });
+            const [foldersRes, filesRes] = await Promise.all([
+                pb.collection('folders').getList(currentPage, PAGE_SIZE, {
+                    filter: folderFilter,
+                    sort: 'name',
+                }),
+                pb.collection('files').getList(currentPage, PAGE_SIZE, {
+                    filter: fileFilter,
+                    sort: 'name',
+                })
+            ]);
 
-                    // We need to know which folders are trashed to determine if a file is a "root" trash item
-                    // (Its parent folder must NOT be in the trash)
-                    const allTrashedFolders = await pb.collection('folders').getFullList({
-                        filter: `user_id = "${user.id}" && is_trash = true`,
-                    });
-                    const trashedFolderIds = new Set(allTrashedFolders.map(f => f.id));
+            if (isLoadMore) {
+                setFolders(prev => [...prev, ...foldersRes.items]);
+                setFiles(prev => [...prev, ...filesRes.items]);
+                setPage(currentPage);
+            } else {
+                setFolders(foldersRes.items);
+                setFiles(filesRes.items);
+                setPage(1);
+            }
 
-                    filesRes = allTrashedFiles.filter(f => !f.folder_id || !trashedFolderIds.has(f.folder_id));
-                } else {
-                    const trashFilter = isTrashView ? `is_trash = true` : `is_trash = false`;
-                    filesRes = await pb.collection('files').getFullList({
-                        filter: (parentId ? `folder_id = "${parentId}"` : `folder_id = ""`) + ` && ` + trashFilter,
-                        sort: 'name',
-                    });
-                }
-            } catch (e) { console.warn("Files fetch error", e); }
-            setFiles(filesRes);
+            setTotalFiles(filesRes.totalItems);
+            setTotalFolders(foldersRes.totalItems);
+            setHasMore(foldersRes.page < foldersRes.totalPages || filesRes.page < filesRes.totalPages);
 
         } catch (err) {
             console.error('Error fetching items', err);
         } finally {
             setLoading(false);
+            setLoadingMore(false);
         }
-    }, [folderId, user]);
+    }, [folderId, user, page, isTrashView, isStarredView]);
 
     useEffect(() => {
-        fetchItems();
-    }, [fetchItems]);
+        fetchItems(false);
+    }, [folderId, isTrashView, isStarredView]); // Only dependencies that reset the view
 
-    return { folders, files, breadcrumbs, loading, refetch: fetchItems };
+    const loadMore = useCallback(() => {
+        if (!loading && !loadingMore && hasMore) {
+            fetchItems(true);
+        }
+    }, [fetchItems, loading, loadingMore, hasMore]);
+
+    return {
+        folders,
+        files,
+        breadcrumbs,
+        loading,
+        loadingMore,
+        hasMore,
+        loadMore,
+        totalFiles,
+        totalFolders,
+        refetch: () => fetchItems(false)
+    };
 }

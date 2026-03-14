@@ -3,6 +3,7 @@ import MainLayout from './components/layout/MainLayout';
 import FileExplorer from './pages/FileExplorer';
 import Trash from './pages/Trash';
 import Gallery from './pages/Gallery';
+import Starred from './pages/Starred';
 import Login from './pages/Login';
 import { useAuthStore } from './store/useAuthStore';
 
@@ -21,6 +22,7 @@ function App() {
           <Route index element={<Navigate to="/files/root" replace />} />
           <Route path="files/:folderId" element={<FileExplorer />} />
           <Route path="gallery" element={<Gallery />} />
+          <Route path="starred" element={<Starred />} />
           <Route path="trash" element={<Navigate to="/trash/root" replace />} />
           <Route path="trash/:folderId" element={<Trash />} />
         </Route>

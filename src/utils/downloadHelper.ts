@@ -50,9 +50,10 @@ export const downloadItemsAsZip = async (
 
     // Phase 1: Count total files recursively
     const countFiles = async (folderId: string) => {
+        const userId = pb.authStore.model?.id;
         const [children, files] = await Promise.all([
-            pb.collection('folders').getFullList({ filter: `parent = "${folderId}" && is_trash = false` }),
-            pb.collection('files').getFullList({ filter: `folder_id = "${folderId}" && is_trash = false` })
+            pb.collection('folders').getFullList({ filter: `parent = "${folderId}" && user_id = "${userId}" && is_trash = false` }),
+            pb.collection('files').getFullList({ filter: `folder_id = "${folderId}" && user_id = "${userId}" && is_trash = false` })
         ]);
         totalFiles += files.length;
         for (const child of children) {
@@ -71,9 +72,10 @@ export const downloadItemsAsZip = async (
 
     // Phase 2: Download and Zip
     const addFolderToZip = async (folderId: string, currentZipFolder: JSZip) => {
+        const userId = pb.authStore.model?.id;
         const [children, files] = await Promise.all([
-            pb.collection('folders').getFullList({ filter: `parent = "${folderId}" && is_trash = false` }),
-            pb.collection('files').getFullList({ filter: `folder_id = "${folderId}" && is_trash = false` })
+            pb.collection('folders').getFullList({ filter: `parent = "${folderId}" && user_id = "${userId}" && is_trash = false` }),
+            pb.collection('files').getFullList({ filter: `folder_id = "${folderId}" && user_id = "${userId}" && is_trash = false` })
         ]);
 
         for (const file of files) {

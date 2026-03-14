@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Folder, ChevronRight, X, ChevronDown, HardDrive } from 'lucide-react';
 import { pb } from '../lib/pb';
+import { useAuthStore } from '../store/useAuthStore';
 import type { RecordModel } from 'pocketbase';
 
 interface MoveModalProps {
@@ -15,12 +16,14 @@ export function MoveModal({ itemsToMove, onClose, onConfirm }: MoveModalProps) {
     const [selectedFolderId, setSelectedFolderId] = useState<string | ''>('');
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
     const [subFolders, setSubFolders] = useState<Record<string, RecordModel[]>>({});
+    const { user } = useAuthStore();
 
     const fetchRootFolders = useCallback(async () => {
+        if (!user) return;
         setLoading(true);
         try {
             const res = await pb.collection('folders').getFullList({
-                filter: 'parent = ""',
+                filter: `parent = "" && user_id = "${user.id}"`,
                 sort: 'name'
             });
             setFolders(res);
@@ -29,17 +32,17 @@ export function MoveModal({ itemsToMove, onClose, onConfirm }: MoveModalProps) {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [user]);
 
     useEffect(() => {
         fetchRootFolders();
     }, [fetchRootFolders]);
 
     const fetchSubFolders = async (parentId: string) => {
-        if (subFolders[parentId]) return;
+        if (subFolders[parentId] || !user) return;
         try {
             const res = await pb.collection('folders').getFullList({
-                filter: `parent = "${parentId}"`,
+                filter: `parent = "${parentId}" && user_id = "${user.id}"`,
                 sort: 'name'
             });
             setSubFolders(prev => ({ ...prev, [parentId]: res }));

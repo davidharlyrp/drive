@@ -1,4 +1,4 @@
 import PocketBase from 'pocketbase';
 
-export const pb = new PocketBase('http://100.114.4.75:6001');
+export const pb = new PocketBase(import.meta.env.VITE_PB_URL);
 pb.autoCancellation(false);

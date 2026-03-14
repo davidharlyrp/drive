@@ -1,6 +1,6 @@
 import { pb } from '../lib/pb';
 
-export async function getRecursiveItems(folderId: string): Promise<{ folders: string[], files: string[] }> {
+export async function getRecursiveItems(folderId: string, userId: string): Promise<{ folders: string[], files: string[] }> {
     const foldersToProcess = [folderId];
     const foundFolders = [folderId];
     const foundFiles: string[] = [];
@@ -11,7 +11,7 @@ export async function getRecursiveItems(folderId: string): Promise<{ folders: st
         // Fetch subfolders
         try {
             const subfolders = await pb.collection('folders').getFullList({
-                filter: `parent = "${currentId}"`
+                filter: `parent = "${currentId}" && user_id = "${userId}"`
             });
             for (const f of subfolders) {
                 foundFolders.push(f.id);
@@ -22,7 +22,7 @@ export async function getRecursiveItems(folderId: string): Promise<{ folders: st
         // Fetch files
         try {
             const files = await pb.collection('files').getFullList({
-                filter: `folder_id = "${currentId}"`
+                filter: `folder_id = "${currentId}" && user_id = "${userId}"`
             });
             for (const f of files) {
                 foundFiles.push(f.id);
@@ -33,26 +33,26 @@ export async function getRecursiveItems(folderId: string): Promise<{ folders: st
     return { folders: foundFolders, files: foundFiles };
 }
 
-export async function moveToTrash(items: { type: 'folder' | 'file', id: string }[]) {
+export async function moveToTrash(items: { type: 'folder' | 'file', id: string }[], userId: string) {
     for (const item of items) {
         if (item.type === 'file') {
             await pb.collection('files').update(item.id, { is_trash: true });
         } else if (item.type === 'folder') {
-            const { folders, files } = await getRecursiveItems(item.id);
+            const { folders, files } = await getRecursiveItems(item.id, userId);
             for (const fId of files) await pb.collection('files').update(fId, { is_trash: true });
             for (const foldId of folders) await pb.collection('folders').update(foldId, { is_trash: true });
         }
     }
 }
 
-export async function permanentDelete(items: { type: 'folder' | 'file', id: string }[]) {
+export async function permanentDelete(items: { type: 'folder' | 'file', id: string }[], userId: string) {
     for (const item of items) {
         if (item.type === 'file') {
             await pb.collection('files').delete(item.id);
         } else if (item.type === 'folder') {
             // In PocketBase, deleting a folder might not auto-delete children unless setup via cascading rules,
             // so we recursively delete manually just in case.
-            const { folders, files } = await getRecursiveItems(item.id);
+            const { folders, files } = await getRecursiveItems(item.id, userId);
             for (const fId of files) {
                 try { await pb.collection('files').delete(fId); } catch { }
             }
@@ -118,7 +118,7 @@ export async function restoreFromTrash(items: { type: 'folder' | 'file', id: str
                 await pb.collection('folders').update(item.id, { is_trash: false, parent: targetParent });
 
                 // Recursively restore all its children
-                const { folders, files } = await getRecursiveItems(item.id);
+                const { folders, files } = await getRecursiveItems(item.id, userId);
                 // The root is already restored, so remove it from the list
                 const subfolders = folders.filter(id => id !== item.id);
                 for (const fId of files) await pb.collection('files').update(fId, { is_trash: false });

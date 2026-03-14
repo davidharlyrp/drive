@@ -1,11 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LayoutGrid, List, ArrowDownUp, File as FileIcon, Folder as FolderIcon, MoreVertical, Trash2, CheckSquare, Square, FolderInput, Calendar, Type, Database, ArrowDown, ArrowUp } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStorage } from '../hooks/useStorage';
 import type { RecordModel } from 'pocketbase';
 import { pb } from '../lib/pb';
 import { useAuthStore } from '../store/useAuthStore';
-import { FileViewerModal } from '../components/FileViewerModal';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useSearchStore } from '../store/useSearchStore';
 import { restoreFromTrash, permanentDelete } from '../utils/trashHelper';
@@ -16,7 +15,8 @@ export default function Trash() {
     const { folderId } = useParams();
     const navigate = useNavigate();
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const { folders, files, breadcrumbs, loading, refetch } = useStorage(folderId || 'root', true);
+    const { folders, files, breadcrumbs, loading, loadingMore, hasMore, loadMore, refetch } = useStorage(folderId || 'root', true);
+    const loadMoreRef = useRef<HTMLDivElement>(null);
     const { user, updateStorage } = useAuthStore();
     const { gridColumns } = useSettingsStore();
     const { searchQuery } = useSearchStore();
@@ -58,6 +58,46 @@ export default function Trash() {
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, []);
 
+    // Intersection Observer for infinite scroll
+    useEffect(() => {
+        if (!hasMore || loading || loadingMore) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    loadMore();
+                }
+            },
+            { threshold: 1.0, rootMargin: '100px' }
+        );
+
+        if (loadMoreRef.current) {
+            observer.observe(loadMoreRef.current);
+        }
+
+        return () => observer.disconnect();
+    }, [hasMore, loading, loadingMore, loadMore]);
+
+    // Intersection Observer for infinite scroll
+    useEffect(() => {
+        if (!hasMore || loading || loadingMore) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    loadMore();
+                }
+            },
+            { threshold: 1.0, rootMargin: '100px' }
+        );
+
+        if (loadMoreRef.current) {
+            observer.observe(loadMoreRef.current);
+        }
+
+        return () => observer.disconnect();
+    }, [hasMore, loading, loadingMore, loadMore]);
+
     useEffect(() => {
         setSelectedItems([]);
     }, [folderId]);
@@ -89,7 +129,7 @@ export default function Trash() {
     const confirmDeleteItems = async () => {
         setDeleteModal(prev => ({ ...prev, isDeleting: true }));
         try {
-            await permanentDelete(deleteModal.items);
+            await permanentDelete(deleteModal.items, user!.id);
             setSelectedItems([]);
             refetch();
             updateStorage();
@@ -298,7 +338,7 @@ export default function Trash() {
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-24 gap-4">
                         <div className="animate-spin w-10 h-10 border-4 border-brand border-t-transparent rounded-full"></div>
-                        <span className="text-xs font-bold text-surface-400 animate-pulse tracking-widest uppercase">Loading files...</span>
+                        <span className="text-xs font-semibold text-surface-400 animate-pulse tracking-widest uppercase">Loading files...</span>
                     </div>
                 ) : sortedFolders.length === 0 && sortedFiles.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 bg-white border border-surface-100 rounded-2xl shadow-soft animate-in fade-in duration-500 mx-auto max-w-2xl mt-12">
@@ -327,7 +367,13 @@ export default function Trash() {
                                     items: [{ type: 'folder', id: folder.id }],
                                     isDeleting: false
                                 })}
-                                onClick={() => handleFolderClick(folder.id)}
+                                onClick={() => {
+                                    if (selectedItems.length > 0) {
+                                        toggleSelection('folder', folder.id);
+                                    } else {
+                                        handleFolderClick(folder.id);
+                                    }
+                                }}
                                 onRefetch={refetch}
                                 userId={user!.id}
                             />
@@ -348,8 +394,25 @@ export default function Trash() {
                                 })}
                                 onRefetch={refetch}
                                 userId={user!.id}
+                                onClick={() => {
+                                    if (selectedItems.length > 0) {
+                                        toggleSelection('file', file.id);
+                                    }
+                                }}
                             />
                         ))}
+                    </div>
+                )}
+
+                {/* Sentinel for infinite scroll */}
+                {hasMore && (
+                    <div ref={loadMoreRef} className="py-8 flex justify-center">
+                        {loadingMore && (
+                            <div className="flex items-center gap-3 text-surface-400">
+                                <div className="animate-spin w-5 h-5 border-2 border-brand border-t-transparent rounded-full"></div>
+                                <span className="text-sm font-medium">Loading more items...</span>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -481,7 +544,7 @@ function FolderItem({ folder, viewMode, onClick, onRefetch, isSelected, onToggle
     );
 }
 
-function FileItem({ file, viewMode, onRefetch, isSelected, onToggleSelect, onDelete, userId }: { file: RecordModel, viewMode: 'grid' | 'list', onRefetch: () => void, isSelected: boolean, onToggleSelect: () => void, onDelete: () => void, userId: string }) {
+function FileItem({ file, viewMode, onClick, onRefetch, isSelected, onToggleSelect, onDelete, userId }: { file: RecordModel, viewMode: 'grid' | 'list', onClick: () => void, onRefetch: () => void, isSelected: boolean, onToggleSelect: () => void, onDelete: () => void, userId: string }) {
     const [showMenu, setShowMenu] = useState(false);
     const isImage = file.type?.startsWith('image/') || false;
     const isVideo = file.type?.startsWith('video/') || false;
@@ -512,7 +575,8 @@ function FileItem({ file, viewMode, onRefetch, isSelected, onToggleSelect, onDel
     if (viewMode === 'list') {
         return (
             <div
-                className={`flex items-center justify-between p-3.5 bg-white border ${isSelected ? 'border-brand bg-brand/5 shadow-sm shadow-brand/5' : 'border-surface-100'} rounded-xl cursor-default transition-all group`}
+                className={`flex items-center justify-between p-3.5 bg-white border ${isSelected ? 'border-brand bg-brand/5 shadow-sm shadow-brand/5' : 'border-surface-100'} rounded-xl cursor-pointer transition-all group`}
+                onClick={onClick}
             >
                 <div className="flex items-center gap-4">
                     <button
@@ -563,7 +627,8 @@ function FileItem({ file, viewMode, onRefetch, isSelected, onToggleSelect, onDel
 
     return (
         <div
-            className={`flex flex-col p-3 bg-white border ${isSelected ? 'border-brand bg-brand/5 shadow-md shadow-brand/10' : 'border-surface-100'} rounded-2xl transition-all relative group cursor-default`}
+            className={`flex flex-col p-3 bg-white border ${isSelected ? 'border-brand bg-brand/5 shadow-md shadow-brand/10' : 'border-surface-100'} rounded-2xl transition-all relative group cursor-pointer`}
+            onClick={onClick}
         >
             <div className="flex justify-between items-start mb-2">
                 <button

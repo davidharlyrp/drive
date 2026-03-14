@@ -1,4 +1,4 @@
-import { Cloud, HardDrive, Settings, X, Image as ImageIcon, ChevronRight, ChevronDown, Folder } from 'lucide-react';
+import { HardDrive, Settings, X, Image as ImageIcon, ChevronRight, ChevronDown, Folder, Trash2, Star } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { pb } from '../../lib/pb';
@@ -45,7 +45,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                     const chunk = folderIds.slice(i, i + 50);
                     const filter = chunk.map(id => `id = "${id}"`).join(' || ');
                     const res = await pb.collection('folders').getFullList({
-                        filter: filter,
+                        filter: `(${filter}) && user_id = "${user.id}"`,
                         sort: 'name'
                     });
                     folders.push(...res);
@@ -95,10 +95,8 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
             `}>
                 <div className="h-16 flex items-center justify-between px-6 border-b border-surface-50">
                     <div className="flex items-center gap-2.5">
-                        <div className="p-1.5 bg-brand rounded-lg shadow-sm shadow-brand/20">
-                            <Cloud className="w-5 h-5 text-white" />
-                        </div>
-                        <span className="font-bold text-surface-900 text-base tracking-tight">CloudStore</span>
+                        <img src="/logo.png" alt="logo" className="w-8 h-8 text-white" />
+                        <span className="font-bold text-surface-900 text-base tracking-tight">Daharin Cloud</span>
                     </div>
                     <button
                         className="md:hidden p-2 text-surface-400 hover:text-surface-900 transition-colors bg-surface-50 rounded-lg"
@@ -164,8 +162,8 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                     </div>
 
                     {/* <NavItem to="/shared" icon={<Share2 size={18} />} label="Shared" /> */}
-                    {/* <NavItem to="/starred" icon={<Star size={18} />} label="Starred" />
-                    <NavItem to="/trash" icon={<Trash2 size={18} />} label="Trash" /> */}
+                    <NavItem to="/starred" icon={<Star size={18} />} label="Starred" />
+                    <NavItem to="/trash" icon={<Trash2 size={18} />} label="Trash" />
                 </nav>
 
                 <div className="p-5 border-t border-surface-50 bg-surface-50/30">

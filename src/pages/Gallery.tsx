@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Image as ImageIcon, CheckSquare, Square, ArrowDownUp, ArrowDown, ArrowUp, X, FolderInput, Trash2, MoreVertical, Edit2 } from 'lucide-react';
+import { Image as ImageIcon, CheckSquare, Square, ArrowDownUp, ArrowDown, ArrowUp, X, FolderInput, Trash2, MoreVertical, Edit2, Star } from 'lucide-react';
 import { pb } from '../lib/pb';
 import { useAuthStore } from '../store/useAuthStore';
 import type { RecordModel } from 'pocketbase';
@@ -14,6 +14,7 @@ import { useSearchStore } from '../store/useSearchStore';
 import { downloadItemsAsZip, downloadSingleFile, type DownloadTask } from '../utils/downloadHelper';
 import { DownloadProgressModal } from '../components/DownloadProgressModal';
 import { Download } from 'lucide-react';
+import { toggleStarred } from '../utils/starredHelper';
 
 export default function Gallery() {
     const [files, setFiles] = useState<RecordModel[]>([]);
@@ -38,6 +39,11 @@ export default function Gallery() {
     const [downloadTasks, setDownloadTasks] = useState<DownloadTask[]>([]);
     const [totalDownloadFiles, setTotalDownloadFiles] = useState(0);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
+    const [page, setPage] = useState(1);
+    const [hasMore, setHasMore] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [totalItems, setTotalItems] = useState(0);
+    const loadMoreRef = useRef<HTMLDivElement>(null);
 
     // Responsive columns that respect the user's max choice but scale down on small screens
     useEffect(() => {
@@ -52,26 +58,40 @@ export default function Gallery() {
         return () => window.removeEventListener('resize', handleResize);
     }, [gridColumns]);
 
-    const fetchMedia = async () => {
+    const fetchMedia = async (isLoadMore = false) => {
         if (!user) return;
-        setLoading(true);
+
+        const currentPage = isLoadMore ? page + 1 : 1;
+        if (!isLoadMore) {
+            setLoading(true);
+            setFiles([]);
+            setTotalItems(0);
+        } else {
+            setLoadingMore(true);
+        }
+
         setApiError(null);
         try {
-            // Fetch everything effortlessly - no API filters that PocketBase can reject
-            const res = await pb.collection('files').getFullList({
+            // Fetch only the user's non-trashed media files directly via API filter
+            const res = await pb.collection('files').getList(currentPage, 50, {
+                filter: `user_id = "${user.id}" && is_trash = false && (type ~ "image/" || type ~ "video/")`,
                 sort: '-created',
             });
 
-            // Exactly what we need filtered smoothly on the client
-            let mediaFiles = res.filter(f =>
-                f.user_id === user.id &&
-                f.is_trash === false &&
-                (f.type?.startsWith('image/') || f.type?.startsWith('video/'))
-            );
+            let mediaFiles = res.items;
 
-            // Filter by folder if folderId is provided
+            // Filter by folder if folderId is provided (Client-side folder filter is fine once we've narrowed to the user)
+            // Note: If filtering by folder, we should ideally do it at API level to support pagination correctly
             if (folderId) {
-                mediaFiles = mediaFiles.filter(f => f.folder_id === folderId);
+                // If folderId exists, we should probably add it to the API filter for correct pagination
+                const folderFilter = `folder_id = "${folderId}"`;
+                const folderRes = await pb.collection('files').getList(currentPage, 50, {
+                    filter: `user_id = "${user.id}" && is_trash = false && (type ~ "image/" || type ~ "video/") && ${folderFilter}`,
+                    sort: '-created',
+                });
+                mediaFiles = folderRes.items;
+                setHasMore(folderRes.page < folderRes.totalPages);
+
                 try {
                     const folder = await pb.collection('folders').getOne(folderId);
                     setCurrentFolderName(folder.name);
@@ -81,20 +101,56 @@ export default function Gallery() {
                 }
             } else {
                 setCurrentFolderName(null);
+                setHasMore(res.page < res.totalPages);
             }
 
-            setFiles(mediaFiles);
+            setTotalItems(folderId ? mediaFiles.length : res.totalItems); // Simplified for folder view
+
+            if (isLoadMore) {
+                setFiles(prev => [...prev, ...mediaFiles]);
+                setPage(currentPage);
+            } else {
+                setFiles(mediaFiles);
+                setPage(1);
+            }
         } catch (err: any) {
             console.error("Failed to fetch gallery media", err);
             setApiError(err.response || err.message);
         } finally {
             setLoading(false);
+            setLoadingMore(false);
+        }
+    };
+
+    const loadMore = () => {
+        if (!loading && !loadingMore && hasMore) {
+            fetchMedia(true);
         }
     };
 
     useEffect(() => {
-        fetchMedia();
+        fetchMedia(false);
     }, [user, folderId]);
+
+    // Intersection Observer for infinite scroll
+    useEffect(() => {
+        if (!hasMore || loading || loadingMore) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    loadMore();
+                }
+            },
+            { threshold: 1.0, rootMargin: '100px' }
+        );
+
+        if (loadMoreRef.current) {
+            observer.observe(loadMoreRef.current);
+        }
+
+        return () => observer.disconnect();
+    }, [hasMore, loading, loadingMore]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -154,7 +210,7 @@ export default function Gallery() {
         if (!user) return;
         setDeleteModal(prev => ({ ...prev, isDeleting: true }));
         try {
-            await moveToTrash(deleteModal.items as any);
+            await moveToTrash(deleteModal.items as any, user!.id);
             setSelectedItems([]);
             setDeleteModal(prev => ({ ...prev, isOpen: false }));
             fetchMedia();
@@ -315,7 +371,7 @@ export default function Gallery() {
                 ) : loading ? (
                     <div className="flex flex-col items-center justify-center py-24 gap-4">
                         <div className="animate-spin w-10 h-10 border-4 border-brand border-t-transparent rounded-full"></div>
-                        <span className="text-xs font-bold text-surface-400 animate-pulse tracking-widest uppercase">Loading media...</span>
+                        <span className="text-xs font-semibold text-surface-400 animate-pulse tracking-widest uppercase">Loading media...</span>
                     </div>
                 ) : files.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 bg-white border border-surface-100 rounded-2xl shadow-soft animate-in fade-in duration-500 mx-auto max-w-2xl mt-12">
@@ -348,7 +404,16 @@ export default function Gallery() {
                                             key={file.id}
                                             className={`relative group rounded-2xl overflow-hidden bg-surface-50 border ${selectedItems.includes(file.id) ? 'border-brand shadow-md shadow-brand/10' : 'border-surface-100 shadow-sm hover:shadow-premium hover:border-brand/30'} transition-all w-full`}
                                         >
-                                            <div className="absolute inset-0 z-10 cursor-pointer" onClick={() => setPreviewFile(file)}></div>
+                                            <div
+                                                className="absolute inset-0 z-10 cursor-pointer"
+                                                onClick={(e) => {
+                                                    if (selectedItems.length > 0) {
+                                                        toggleSelection(e, file.id);
+                                                    } else {
+                                                        setPreviewFile(file);
+                                                    }
+                                                }}
+                                            ></div>
 
                                             {/* Top-left: Selection Checkbox on Hover or Selected */}
                                             <button
@@ -372,6 +437,17 @@ export default function Gallery() {
                                                     </button>
                                                     {activeMenu === file.id && (
                                                         <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-xl shadow-premium border border-surface-100 py-1.5 z-50 animate-in fade-in slide-in-from-top-2 flex flex-col">
+                                                            <button
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    setActiveMenu(null);
+                                                                    await toggleStarred([{ type: 'file', id: file.id }], !file.is_starred, user!.id);
+                                                                    fetchMedia();
+                                                                }}
+                                                                className="px-3 py-2 text-[13px] font-semibold text-surface-700 hover:bg-surface-50 hover:text-brand flex items-center gap-2"
+                                                            >
+                                                                <Star size={14} className={file.is_starred ? "text-amber-500 fill-amber-500" : "opacity-70"} /> {file.is_starred ? 'Unstar' : 'Star'}
+                                                            </button>
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -443,6 +519,18 @@ export default function Gallery() {
                         ))}
                     </div>
                 )}
+
+                {/* Sentinel for infinite scroll */}
+                {hasMore && (
+                    <div ref={loadMoreRef} className="py-8 flex justify-center">
+                        {loadingMore && (
+                            <div className="flex items-center gap-3 text-surface-400">
+                                <div className="animate-spin w-5 h-5 border-2 border-brand border-t-transparent rounded-full"></div>
+                                <span className="text-sm font-medium">Loading more media...</span>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {previewFile && (
@@ -461,6 +549,9 @@ export default function Gallery() {
                         items: [{ type: 'file', id: file.id }],
                         isDeleting: false
                     })}
+                    totalFiles={totalItems}
+                    hasMore={hasMore}
+                    onLoadMore={loadMore}
                 />
             )}
 
