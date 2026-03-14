@@ -1,26 +1,24 @@
-import { X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, Loader2, Download } from 'lucide-react';
 
-export interface UploadTask {
+export interface DownloadTask {
     id: string;
     name: string;
-    size: number;
-    progress: number;
-    status: 'pending' | 'uploading' | 'completed' | 'error';
+    status: 'pending' | 'downloading' | 'completed' | 'error';
     error?: string;
 }
 
-interface UploadProgressModalProps {
-    tasks: UploadTask[];
+interface DownloadProgressModalProps {
+    tasks: DownloadTask[];
+    totalFiles: number;
     onClose: () => void;
 }
 
-export function UploadProgressModal({ tasks, onClose }: UploadProgressModalProps) {
-    if (tasks.length === 0) return null;
+export function DownloadProgressModal({ tasks, totalFiles, onClose }: DownloadProgressModalProps) {
+    if (totalFiles === 0 && tasks.length === 0) return null;
 
     const completedCount = tasks.filter(t => t.status === 'completed').length;
-    const totalCount = tasks.length;
-    const isFinished = tasks.every(t => t.status === 'completed' || t.status === 'error');
-    const totalProgress = tasks.reduce((acc, t) => acc + t.progress, 0) / tasks.length;
+    const isFinished = completedCount === totalFiles && totalFiles > 0;
+    const progress = totalFiles > 0 ? (completedCount / totalFiles) * 100 : 0;
 
     return (
         <div className="fixed bottom-8 right-8 w-96 z-[100] animate-in slide-in-from-bottom-8 duration-500 flex flex-col pointer-events-auto">
@@ -32,15 +30,15 @@ export function UploadProgressModal({ tasks, onClose }: UploadProgressModalProps
                             {isFinished ? (
                                 <CheckCircle size={18} />
                             ) : (
-                                <Loader2 size={18} className="animate-spin" />
+                                <Download size={18} className={totalFiles > 0 ? "animate-bounce" : ""} />
                             )}
                         </div>
                         <div>
-                            <span className="text-sm font-bold text-surface-900 block">
-                                {isFinished ? 'Uploads Completed' : 'Uploading Files'}
+                            <span className="text-sm font-semibold text-surface-900 block">
+                                {isFinished ? 'Preparing ZIP Ready' : totalFiles === 0 ? 'Analyzing structure...' : 'Creating ZIP Archive'}
                             </span>
                             <span className="text-[10px] font-semibold text-surface-400 uppercase tracking-normal">
-                                {completedCount} of {totalCount} files finished
+                                {totalFiles > 0 ? `${completedCount} of ${totalFiles} files bundled` : 'Counting files...'}
                             </span>
                         </div>
                     </div>
@@ -55,52 +53,41 @@ export function UploadProgressModal({ tasks, onClose }: UploadProgressModalProps
                 </div>
 
                 {/* Body */}
-                <div className="max-h-80 overflow-y-auto p-6 flex flex-col gap-4 custom-scrollbar">
+                <div className="max-h-60 overflow-y-auto p-6 flex flex-col gap-4 custom-scrollbar">
                     {/* Overall Progress */}
-                    {!isFinished && (
+                    {totalFiles > 0 && !isFinished && (
                         <div className="mb-2 p-4 bg-surface-50 rounded-2xl border border-surface-100">
                             <div className="flex justify-between items-center mb-2">
                                 <span className="text-xs font-semibold text-surface-900">Total Progress</span>
-                                <span className="text-xs font-semibold text-brand">{Math.round(totalProgress)}%</span>
+                                <span className="text-xs font-semibold text-brand">{Math.round(progress)}%</span>
                             </div>
                             <div className="w-full bg-surface-200 h-2 rounded-full overflow-hidden">
                                 <div
                                     className="bg-brand h-full transition-all duration-500 ease-out shadow-[0_0_12px_rgba(99,102,241,0.4)]"
-                                    style={{ width: `${totalProgress}%` }}
+                                    style={{ width: `${progress}%` }}
                                 />
                             </div>
                         </div>
                     )}
 
-                    <div className="space-y-4">
-                        {tasks.map((task) => (
-                            <div key={task.id} className="flex flex-col gap-2 p-1">
+                    <div className="space-y-3">
+                        {tasks.slice(-5).map((task) => (
+                            <div key={task.id} className="flex flex-col gap-1 p-1">
                                 <div className="flex items-center justify-between gap-4">
                                     <div className="flex items-center gap-2 flex-1 min-w-0">
-                                        <div className={`w-2 h-2 rounded-full shrink-0 ${task.status === 'completed' ? 'bg-brand' : task.status === 'error' ? 'bg-red-400' : 'bg-brand animate-pulse'}`}></div>
-                                        <span className="text-xs font-semibold text-surface-700 truncate" title={task.name}>
+                                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${task.status === 'completed' ? 'bg-brand' : task.status === 'error' ? 'bg-red-400' : 'bg-brand animate-pulse'}`}></div>
+                                        <span className="text-[11px] font-semibold text-surface-600 truncate" title={task.name}>
                                             {task.name}
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
-                                        <span className="text-[10px] font-bold text-surface-400">{(task.size / 1024 / 1024).toFixed(2)} MB</span>
-                                        {task.status === 'completed' && <CheckCircle size={14} className="text-brand" />}
-                                        {task.status === 'error' && <AlertCircle size={14} className="text-red-500" />}
-                                        {task.status === 'uploading' && <span className="text-[10px] font-black text-brand">{Math.round(task.progress)}%</span>}
+                                        {task.status === 'completed' && <CheckCircle size={12} className="text-brand" />}
+                                        {task.status === 'error' && <AlertCircle size={12} className="text-red-500" />}
+                                        {task.status === 'downloading' && <Loader2 size={12} className="text-brand animate-spin" />}
                                     </div>
                                 </div>
-
-                                {task.status === 'uploading' && (
-                                    <div className="w-full bg-surface-100 h-1 rounded-full overflow-hidden">
-                                        <div
-                                            className="bg-brand h-full transition-all duration-300"
-                                            style={{ width: `${task.progress}%` }}
-                                        />
-                                    </div>
-                                )}
-
                                 {task.status === 'error' && (
-                                    <span className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full w-fit ml-4">{task.error || 'Upload failed'}</span>
+                                    <span className="text-[9px] font-semibold text-red-500 bg-red-50 px-2 py-0.5 rounded-full w-fit ml-3">{task.error || 'Failed'}</span>
                                 )}
                             </div>
                         ))}

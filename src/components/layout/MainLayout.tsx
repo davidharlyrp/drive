@@ -13,10 +13,12 @@ export default function MainLayout() {
     }, [location.pathname]);
 
     return (
-        <div className="flex h-full w-full bg-mono-950 text-mono-100 overflow-hidden relative">
+        <div className="flex h-full w-full bg-surface-50 text-surface-700 overflow-hidden relative">
             <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
-            <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 <Topbar onMenuClick={() => setIsSidebarOpen(true)} />
+
                 <main className="flex-1 overflow-y-auto p-4 content-area">
                     <Outlet />
                 </main>

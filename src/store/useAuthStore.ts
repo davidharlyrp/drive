@@ -13,9 +13,9 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-    user: null,
-    token: null,
-    isAuthenticated: false,
+    user: pb.authStore.model,
+    token: pb.authStore.token,
+    isAuthenticated: pb.authStore.isValid,
     storageUsed: 0,
     setUser: (user, token) => set({ user, token, isAuthenticated: !!user && !!token }),
     updateStorage: async () => {
@@ -32,5 +32,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             console.error('Error updating storage:', error);
         }
     },
-    logout: () => set({ user: null, token: null, isAuthenticated: false, storageUsed: 0 }),
+    logout: () => {
+        pb.authStore.clear();
+        set({ user: null, token: null, isAuthenticated: false, storageUsed: 0 });
+    },
 }));

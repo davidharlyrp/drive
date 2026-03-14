@@ -1,60 +1,26 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { Trash2, Edit2, MoreVertical, LayoutGrid, List, CheckSquare, Square, HardDrive, Plus, Upload, FolderPlus, ArrowDownUp, ArrowDown, ArrowUp, Type, Calendar, Database, FileText, Download, FolderInput, File as FileIcon, Folder as FolderIcon } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { LayoutGrid, List, ArrowDownUp, File as FileIcon, Folder as FolderIcon, MoreVertical, Trash2, CheckSquare, Square, FolderInput, Calendar, Type, Database, ArrowDown, ArrowUp } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStorage } from '../hooks/useStorage';
 import type { RecordModel } from 'pocketbase';
 import { pb } from '../lib/pb';
 import { useAuthStore } from '../store/useAuthStore';
 import { FileViewerModal } from '../components/FileViewerModal';
-import { UploadProgressModal, type UploadTask } from '../components/UploadProgressModal';
-import { MoveModal } from '../components/MoveModal';
-import { InputModal } from '../components/InputModal';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useSearchStore } from '../store/useSearchStore';
-import { moveToTrash } from '../utils/trashHelper';
+import { restoreFromTrash, permanentDelete } from '../utils/trashHelper';
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
-import { downloadItemsAsZip, downloadSingleFile, type DownloadTask } from '../utils/downloadHelper';
-import { DownloadProgressModal } from '../components/DownloadProgressModal';
+import { useMemo } from 'react';
 
-export default function FileExplorer() {
+export default function Trash() {
     const { folderId } = useParams();
     const navigate = useNavigate();
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const { folders, files, breadcrumbs, loading, refetch } = useStorage(folderId || 'root');
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const { user, token, updateStorage } = useAuthStore();
+    const { folders, files, breadcrumbs, loading, refetch } = useStorage(folderId || 'root', true);
+    const { user, updateStorage } = useAuthStore();
     const { gridColumns } = useSettingsStore();
     const { searchQuery } = useSearchStore();
-    const [previewFile, setPreviewFile] = useState<RecordModel | null>(null);
-    const [isDragging, setIsDragging] = useState(false);
     const [selectedItems, setSelectedItems] = useState<{ type: 'folder' | 'file', id: string }[]>([]);
-
-    const gridColumnClass = {
-        2: 'grid-cols-2',
-        3: 'grid-cols-2 sm:grid-cols-3',
-        4: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4',
-        5: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5',
-        6: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6',
-        8: 'grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8',
-    }[gridColumns] || 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6';
-    const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
-    const [itemsToMove, setItemsToMove] = useState<{ type: 'folder' | 'file', id: string, name: string }[] | null>(null);
-    const [sortType, setSortType] = useState<'name' | 'date' | 'size'>('name');
-    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-    const [showSortMenu, setShowSortMenu] = useState(false);
-    const [showAddMenu, setShowAddMenu] = useState(false);
-    const [inputModal, setInputModal] = useState<{
-        isOpen: boolean;
-        title: string;
-        defaultValue: string;
-        placeholder?: string;
-        onConfirm: (value: string) => void;
-    }>({
-        isOpen: false,
-        title: '',
-        defaultValue: '',
-        onConfirm: () => { }
-    });
     const [deleteModal, setDeleteModal] = useState<{
         isOpen: boolean;
         title: string;
@@ -68,10 +34,20 @@ export default function FileExplorer() {
         items: [],
         isDeleting: false
     });
-    const [downloadTasks, setDownloadTasks] = useState<DownloadTask[]>([]);
-    const [totalDownloadFiles, setTotalDownloadFiles] = useState(0);
 
-    // Clear selection on Escape
+    const gridColumnClass = {
+        2: 'grid-cols-2',
+        3: 'grid-cols-2 sm:grid-cols-3',
+        4: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4',
+        5: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5',
+        6: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6',
+        8: 'grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8',
+    }[gridColumns] || 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6';
+
+    const [sortType, setSortType] = useState<'name' | 'date' | 'size'>('name');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+    const [showSortMenu, setShowSortMenu] = useState(false);
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
@@ -82,153 +58,13 @@ export default function FileExplorer() {
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, []);
 
-    // Clear selection on folder change
     useEffect(() => {
         setSelectedItems([]);
     }, [folderId]);
 
-    const handleConfirmMove = async (destinationId: string | '') => {
-        if (!itemsToMove) return;
-        try {
-            for (const item of itemsToMove) {
-                const collection = item.type === 'folder' ? 'folders' : 'files';
-                const data = item.type === 'folder' ? { parent: destinationId } : { folder_id: destinationId };
-                await pb.collection(collection).update(item.id, data);
-            }
-            setItemsToMove(null);
-            setSelectedItems([]);
-            refetch();
-        } catch (err: any) {
-            alert('Move failed: ' + err.message);
-        }
-    };
 
     const handleFolderClick = (id: string) => {
-        navigate(`/files/${id}`);
-    };
-
-    const handleCreateFolder = () => {
-        setInputModal({
-            isOpen: true,
-            title: 'New Folder',
-            defaultValue: '',
-            placeholder: 'Enter folder name',
-            onConfirm: async (name) => {
-                if (!user) return;
-                try {
-                    await pb.collection('folders').create({
-                        name,
-                        parent: folderId === 'root' ? '' : folderId,
-                        user_id: user.id
-                    });
-                    refetch();
-                } catch (e: any) { alert(e.message); }
-            }
-        });
-    };
-
-    const xhrUpload = (formData: FormData, taskId: string): Promise<any> => {
-        return new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            const url = `${pb.baseUrl}/api/collections/files/records`;
-
-            xhr.open('POST', url);
-
-            if (token) {
-                xhr.setRequestHeader('Authorization', token);
-            }
-
-            xhr.upload.onprogress = (event) => {
-                if (event.lengthComputable) {
-                    const percent = (event.loaded / event.total) * 100;
-                    setUploadTasks(prev => prev.map(t =>
-                        t.id === taskId ? { ...t, progress: percent } : t
-                    ));
-                }
-            };
-
-            xhr.onload = () => {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    resolve(JSON.parse(xhr.response));
-                } else {
-                    reject(new Error(xhr.statusText || 'Upload failed'));
-                }
-            };
-
-            xhr.onerror = () => reject(new Error('Network error'));
-            xhr.send(formData);
-        });
-    };
-
-    const uploadFiles = async (fileList: FileList | File[]) => {
-        if (!user) return;
-        const filesToUpload = Array.from(fileList);
-
-        // Initialize tasks
-        const newTasks: UploadTask[] = filesToUpload.map(file => ({
-            id: Math.random().toString(36).substring(7),
-            name: file.name,
-            size: file.size,
-            progress: 0,
-            status: 'uploading'
-        }));
-
-        setUploadTasks(prev => [...prev, ...newTasks]);
-
-        try {
-            // Upload files
-            for (let i = 0; i < filesToUpload.length; i++) {
-                const file = filesToUpload[i];
-                const taskId = newTasks[i].id;
-
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('name', file.name);
-                formData.append('size', file.size.toString());
-                formData.append('type', file.type || 'application/octet-stream');
-                formData.append('user_id', user.id);
-                if (folderId !== 'root' && folderId) formData.append('folder_id', folderId);
-
-                try {
-                    await xhrUpload(formData, taskId);
-
-                    setUploadTasks(prev => prev.map(t =>
-                        t.id === taskId ? { ...t, status: 'completed', progress: 100 } : t
-                    ));
-                } catch (err: any) {
-                    setUploadTasks(prev => prev.map(t =>
-                        t.id === taskId ? { ...t, status: 'error', error: err.message } : t
-                    ));
-                }
-            }
-            refetch();
-            updateStorage();
-        } catch (err: any) {
-            console.error('Batch upload error:', err);
-            refetch();
-        }
-    };
-
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files) uploadFiles(e.target.files);
-    };
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(true);
-    };
-
-    const handleDragLeave = (e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(false);
-    };
-
-    const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(false);
-        if (e.dataTransfer.files) {
-            uploadFiles(e.dataTransfer.files);
-        }
+        navigate(`/trash/${id}`);
     };
 
     const toggleSelection = (type: 'folder' | 'file', id: string) => {
@@ -243,8 +79,8 @@ export default function FileExplorer() {
         if (!selectedItems.length) return;
         setDeleteModal({
             isOpen: true,
-            title: 'Move to Trash',
-            message: `Are you sure you want to move ${selectedItems.length} selected items to the trash?`,
+            title: 'Delete Permanently',
+            message: `Are you sure you want to permanently delete ${selectedItems.length} selected items? This action cannot be undone.`,
             items: selectedItems,
             isDeleting: false
         });
@@ -253,34 +89,28 @@ export default function FileExplorer() {
     const confirmDeleteItems = async () => {
         setDeleteModal(prev => ({ ...prev, isDeleting: true }));
         try {
-            await moveToTrash(deleteModal.items);
+            await permanentDelete(deleteModal.items);
             setSelectedItems([]);
             refetch();
             updateStorage();
             setDeleteModal(prev => ({ ...prev, isOpen: false, isDeleting: false }));
         } catch (err: any) {
-            alert('Move to trash failed: ' + err.message);
+            alert('Delete failed: ' + err.message);
             setDeleteModal(prev => ({ ...prev, isDeleting: false }));
             refetch();
         }
     };
 
-    const handleRename = async (type: 'folder' | 'file', id: string, currentName: string) => {
-        setInputModal({
-            isOpen: true,
-            title: `Rename ${type === 'folder' ? 'Folder' : 'File'} `,
-            defaultValue: currentName,
-            placeholder: 'Enter new name',
-            onConfirm: async (newName) => {
-                try {
-                    const collection = type === 'folder' ? 'folders' : 'files';
-                    await pb.collection(collection).update(id, { name: newName });
-                    refetch();
-                } catch (err: any) {
-                    alert('Rename failed: ' + err.message);
-                }
-            }
-        });
+    const handleBatchRestore = async () => {
+        if (!selectedItems.length || !user) return;
+        try {
+            await restoreFromTrash(selectedItems, user.id);
+            setSelectedItems([]);
+            refetch();
+            updateStorage();
+        } catch (err: any) {
+            alert('Batch restore failed: ' + err.message);
+        }
     };
 
     const handleSelectAll = () => {
@@ -321,66 +151,24 @@ export default function FileExplorer() {
             });
     }, [files, sortType, sortOrder, searchQuery]);
 
-    const handleCreateTextFile = () => {
-        setInputModal({
-            isOpen: true,
-            title: 'Create Text File',
-            defaultValue: 'New File.txt',
-            placeholder: 'Enter file name (.txt)',
-            onConfirm: async (name) => {
-                try {
-                    const finalName = name.endsWith('.txt') ? name : `${name}.txt`;
-                    const blob = new Blob([''], { type: 'text/plain' });
-                    const formData = new FormData();
-                    formData.append('file', blob, finalName);
-                    formData.append('name', finalName);
-                    formData.append('user_id', user!.id);
-                    if (folderId && folderId !== 'root') {
-                        formData.append('folder_id', folderId);
-                    }
-                    await pb.collection('files').create(formData);
-                    refetch();
-                    updateStorage();
-                } catch (err) {
-                    alert('Failed to create text file.');
-                }
-            }
-        });
-    };
 
     return (
-        <div
-            className="flex flex-col h-full relative"
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-        >
-            {/* Drag Overlay */}
-            {isDragging && (
-                <div className="absolute inset-0 z-50 bg-brand/5 backdrop-blur-sm border-2 border-dashed border-brand/30 flex items-center justify-center rounded-xl pointer-events-none transition-all">
-                    <div className="bg-white p-8 rounded-2xl shadow-premium flex flex-col items-center gap-4 animate-in zoom-in-95 duration-200">
-                        <Upload size={48} className="text-brand animate-bounce" />
-                        <span className="text-xl font-bold text-surface-900">Drop files to upload</span>
-                        <span className="text-sm text-surface-500 italic">instantly to this folder</span>
-                    </div>
-                </div>
-            )}
-
+        <div className="flex flex-col h-full relative">
             {/* Breadcrumbs */}
             <div className="flex items-center text-sm mb-2 text-surface-400 overflow-x-auto whitespace-nowrap pb-2 scrollbar-none">
                 <span
                     className="hover:text-brand cursor-pointer transition-colors font-medium flex items-center gap-1.5"
-                    onClick={() => navigate('/files/root')}
+                    onClick={() => navigate('/trash/root')}
                 >
-                    <HardDrive size={16} />
-                    My Files
+                    <Trash2 size={16} />
+                    Trash
                 </span>
                 {breadcrumbs.map((crumb) => (
                     <div key={crumb.id} className="flex items-center">
                         <span className="mx-3 text-surface-300">/</span>
                         <span
-                            className={`hover:text-brand cursor-pointer transition-colors ${crumb.id === folderId ? 'text-brand font-semibold' : 'font-medium'}`}
-                            onClick={() => navigate(`/files/${crumb.id}`)}
+                            className={`hover: text - brand cursor - pointer transition - colors ${crumb.id === folderId ? 'text-brand font-semibold' : 'font-medium'} `}
+                            onClick={() => navigate(`/trash/${crumb.id}`)}
                         >
                             {crumb.name}
                         </span>
@@ -394,42 +182,6 @@ export default function FileExplorer() {
             {/* Toolbar */}
             <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-surface-200">
                 <div className="flex items-center gap-3">
-                    <div className="relative">
-                        <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileUpload} />
-                        <button className="btn-primary" onClick={() => setShowAddMenu(!showAddMenu)}>
-                            <Plus size={18} />
-                            <span>Add</span>
-                        </button>
-                        {showAddMenu && (
-                            <>
-                                <div className="fixed inset-0 z-10" onClick={() => setShowAddMenu(false)}></div>
-                                <div className="absolute left-0 mt-2 w-44 bg-white border border-surface-100 rounded-2xl shadow-premium z-20 py-2 animate-in fade-in zoom-in-95 duration-200">
-                                    <button
-                                        className="w-full text-left px-4 py-2.5 text-sm font-medium text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors"
-                                        onClick={() => {
-                                            setShowAddMenu(false);
-                                            fileInputRef.current?.click();
-                                        }}
-                                    >
-                                        <Upload size={16} className="text-surface-400" /> Upload File
-                                    </button>
-                                    <button
-                                        className="w-full text-left px-4 py-2.5 text-sm font-medium text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors"
-                                        onClick={() => {
-                                            setShowAddMenu(false);
-                                            handleCreateTextFile();
-                                        }}
-                                    >
-                                        <FileText size={16} className="text-surface-400" /> Create TXT File
-                                    </button>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                    <button className="btn-secondary" onClick={handleCreateFolder}>
-                        <FolderPlus size={18} />
-                        <span>New Folder</span>
-                    </button>
                     {(sortedFolders.length > 0 || sortedFiles.length > 0) && (
                         <button
                             className={`flex items-center gap-2 px-4 py-2 border rounded-xl transition-all text-sm font-medium ${selectedItems.length > 0 ? 'bg-brand/10 border-brand/30 text-brand shadow-sm shadow-brand/10' : 'bg-white border-surface-200 text-surface-600 hover:bg-surface-50 hover:border-surface-300 hover:shadow-sm'} `}
@@ -447,42 +199,18 @@ export default function FileExplorer() {
                         <div className="flex items-center gap-2 animate-in slide-in-from-left-4 fade-in duration-300">
                             <div className="w-px h-6 bg-surface-200 mx-1"></div>
                             <button
-                                className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-surface-50 text-surface-700 border border-surface-200 rounded-xl transition-all text-sm font-medium shadow-sm active:scale-95"
-                                onClick={() => {
-                                    const items = selectedItems.map(item => {
-                                        const folder = sortedFolders.find(f => f.id === item.id);
-                                        const file = sortedFiles.find(f => f.id === item.id);
-                                        return { type: item.type, id: item.id, name: folder?.name || file?.name || 'Unknown' };
-                                    });
-                                    setItemsToMove(items);
-                                }}
+                                className="flex items-center gap-2 px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-100 rounded-xl transition-all text-sm font-medium shadow-sm active:scale-95"
+                                onClick={handleBatchRestore}
                             >
-                                <FolderInput size={18} className="text-brand" />
-                                <span>Move ({selectedItems.length})</span>
+                                <FolderInput size={18} />
+                                <span>Restore ({selectedItems.length})</span>
                             </button>
                             <button
                                 className="flex items-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-xl transition-all text-sm font-medium shadow-sm shadow-red-100/50 active:scale-95"
                                 onClick={handleBatchDelete}
                             >
                                 <Trash2 size={18} />
-                                <span>Delete ({selectedItems.length})</span>
-                            </button>
-                            <button
-                                className="flex items-center gap-2 px-4 py-2 bg-brand/10 hover:bg-brand/20 text-brand border border-brand/20 rounded-xl transition-all text-sm font-medium shadow-sm active:scale-95"
-                                onClick={() => {
-                                    const items = selectedItems.map(item => {
-                                        const folder = sortedFolders.find(f => f.id === item.id);
-                                        const file = sortedFiles.find(f => f.id === item.id);
-                                        return { type: item.type, id: item.id, name: folder?.name || file?.name || 'Unknown' };
-                                    });
-                                    downloadItemsAsZip(items, 'selected_items.zip', (total, tasks) => {
-                                        setTotalDownloadFiles(total);
-                                        setDownloadTasks(tasks);
-                                    });
-                                }}
-                            >
-                                <Download size={18} />
-                                <span>Download Zip</span>
+                                <span>Delete Permanently ({selectedItems.length})</span>
                             </button>
                         </div>
                     )}
@@ -576,11 +304,11 @@ export default function FileExplorer() {
                     <div className="flex flex-col items-center justify-center py-20 bg-white border border-surface-100 rounded-2xl shadow-soft animate-in fade-in duration-500 mx-auto max-w-2xl mt-12">
                         <div className="relative mb-6">
                             <div className="absolute inset-0 bg-brand/10 blur-2xl rounded-full"></div>
-                            <Database className="w-16 h-16 text-brand relative z-10" />
+                            <Trash2 className="w-16 h-16 text-brand relative z-10" />
                         </div>
-                        <h3 className="text-xl font-bold text-surface-900 mb-2">No files found</h3>
+                        <h3 className="text-xl font-bold text-surface-900 mb-2">Trash is empty</h3>
                         <p className="text-sm font-medium text-surface-400 mb-8 max-w-[280px] text-center">
-                            This folder is currently empty. Start by uploading some files or dragging them here.
+                            No files or folders have been moved to the trash yet.
                         </p>
                     </div>
                 ) : (
@@ -592,20 +320,16 @@ export default function FileExplorer() {
                                 viewMode={viewMode}
                                 isSelected={selectedItems.some(item => item.id === folder.id)}
                                 onToggleSelect={() => toggleSelection('folder', folder.id)}
-                                onRename={(id, name) => handleRename('folder', id, name)}
-                                onMove={() => setItemsToMove([{ type: 'folder', id: folder.id, name: folder.name }])}
                                 onDelete={() => setDeleteModal({
                                     isOpen: true,
-                                    title: 'Move Folder to Trash',
-                                    message: `Are you sure you want to move "${folder.name}" to the trash?`,
+                                    title: 'Delete Folder Permanently',
+                                    message: `Are you sure you want to permanently delete "${folder.name}"?`,
                                     items: [{ type: 'folder', id: folder.id }],
                                     isDeleting: false
                                 })}
-                                onDownloadZip={() => downloadItemsAsZip([{ type: 'folder', id: folder.id, name: folder.name }], `${folder.name}.zip`, (total, tasks) => {
-                                    setTotalDownloadFiles(total);
-                                    setDownloadTasks(tasks);
-                                })}
                                 onClick={() => handleFolderClick(folder.id)}
+                                onRefetch={refetch}
+                                userId={user!.id}
                             />
                         ))}
                         {sortedFiles.map(file => (
@@ -615,62 +339,20 @@ export default function FileExplorer() {
                                 viewMode={viewMode}
                                 isSelected={selectedItems.some(item => item.id === file.id)}
                                 onToggleSelect={() => toggleSelection('file', file.id)}
-                                onRename={(id, name) => handleRename('file', id, name)}
-                                onMove={() => setItemsToMove([{ type: 'file', id: file.id, name: file.name }])}
                                 onDelete={() => setDeleteModal({
                                     isOpen: true,
-                                    title: 'Move File to Trash',
-                                    message: `Are you sure you want to move "${file.name}" to the trash?`,
+                                    title: 'Delete File Permanently',
+                                    message: `Are you sure you want to permanently delete "${file.name}"?`,
                                     items: [{ type: 'file', id: file.id }],
                                     isDeleting: false
                                 })}
-                                onClick={() => setPreviewFile(file)}
+                                onRefetch={refetch}
+                                userId={user!.id}
                             />
                         ))}
                     </div>
                 )}
             </div>
-
-            {previewFile && (
-                <FileViewerModal
-                    file={previewFile}
-                    files={files}
-                    onClose={() => setPreviewFile(null)}
-                    onRefetch={refetch}
-                    onRename={(file) => handleRename('file', file.id, file.name)}
-                    onMove={(file) => setItemsToMove([{ type: 'file', id: file.id, name: file.name }])}
-                    onDownload={(file) => downloadSingleFile(file)}
-                    onDelete={(file) => setDeleteModal({
-                        isOpen: true,
-                        title: 'Move File to Trash',
-                        message: `Are you sure you want to move this file to the trash?`,
-                        items: [{ type: 'file', id: file.id }],
-                        isDeleting: false
-                    })}
-                />
-            )}
-
-            <UploadProgressModal
-                tasks={uploadTasks}
-                onClose={() => setUploadTasks([])}
-            />
-
-            {itemsToMove && (
-                <MoveModal
-                    itemsToMove={itemsToMove}
-                    onClose={() => setItemsToMove(null)}
-                    onConfirm={handleConfirmMove}
-                />
-            )}
-
-            <InputModal
-                isOpen={inputModal.isOpen}
-                title={inputModal.title}
-                defaultValue={inputModal.defaultValue}
-                placeholder={inputModal.placeholder}
-                onClose={() => setInputModal(prev => ({ ...prev, isOpen: false }))}
-                onConfirm={inputModal.onConfirm}
-            />
 
             <DeleteConfirmModal
                 isOpen={deleteModal.isOpen}
@@ -680,20 +362,11 @@ export default function FileExplorer() {
                 onClose={() => setDeleteModal(prev => ({ ...prev, isOpen: false }))}
                 onConfirm={confirmDeleteItems}
             />
-
-            <DownloadProgressModal
-                tasks={downloadTasks}
-                totalFiles={totalDownloadFiles}
-                onClose={() => {
-                    setDownloadTasks([]);
-                    setTotalDownloadFiles(0);
-                }}
-            />
         </div>
     );
 }
 
-function FolderItem({ folder, viewMode, onClick, isSelected, onToggleSelect, onRename, onMove, onDelete, onDownloadZip }: { folder: RecordModel, viewMode: 'grid' | 'list', onClick: () => void, isSelected: boolean, onToggleSelect: () => void, onRename: (id: string, name: string) => void, onMove: () => void, onDelete: () => void, onDownloadZip: () => void }) {
+function FolderItem({ folder, viewMode, onClick, onRefetch, isSelected, onToggleSelect, onDelete, userId }: { folder: RecordModel, viewMode: 'grid' | 'list', onClick: () => void, onRefetch: () => void, isSelected: boolean, onToggleSelect: () => void, onDelete: () => void, userId: string }) {
     const [showMenu, setShowMenu] = useState(false);
 
     const handleDelete = async (e: React.MouseEvent) => {
@@ -702,10 +375,14 @@ function FolderItem({ folder, viewMode, onClick, isSelected, onToggleSelect, onR
         setShowMenu(false);
     };
 
-    const handleRenameClick = (e: React.MouseEvent) => {
+    const handleRestore = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        onRename(folder.id, folder.name);
-        setShowMenu(false);
+        try {
+            await restoreFromTrash([{ type: 'folder', id: folder.id }], userId);
+            onRefetch();
+        } catch (err) {
+            alert('Restore failed');
+        }
     };
 
     const handleSelect = (e: React.MouseEvent) => {
@@ -742,18 +419,12 @@ function FolderItem({ folder, viewMode, onClick, isSelected, onToggleSelect, onR
                         <>
                             <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}></div>
                             <div className="absolute right-0 mt-2 w-48 bg-white border border-surface-100 rounded-2xl shadow-premium z-20 py-2 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={handleRenameClick}>
-                                    <Edit2 size={16} className="text-surface-400" /> Rename
-                                </button>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={(e) => { e.stopPropagation(); onMove(); setShowMenu(false); }}>
-                                    <FolderInput size={16} className="text-surface-400" /> Move
-                                </button>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={(e) => { e.stopPropagation(); onDownloadZip(); setShowMenu(false); }}>
-                                    <Download size={16} className="text-surface-400" /> Download ZIP
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 transition-colors" onClick={handleRestore}>
+                                    <FolderInput size={16} /> Restore
                                 </button>
                                 <div className="h-px bg-surface-100 my-1 mx-2"></div>
                                 <button className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors" onClick={handleDelete}>
-                                    <Trash2 size={16} /> Delete
+                                    <Trash2 size={16} /> Delete Permanently
                                 </button>
                             </div>
                         </>
@@ -787,18 +458,12 @@ function FolderItem({ folder, viewMode, onClick, isSelected, onToggleSelect, onR
                         <>
                             <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}></div>
                             <div className="absolute right-0 top-10 w-48 bg-white border border-surface-100 rounded-2xl shadow-premium z-20 py-2 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={handleRenameClick}>
-                                    <Edit2 size={16} className="text-surface-400" /> Rename
-                                </button>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={(e) => { e.stopPropagation(); onMove(); setShowMenu(false); }}>
-                                    <FolderInput size={16} className="text-surface-400" /> Move
-                                </button>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={(e) => { e.stopPropagation(); onDownloadZip(); setShowMenu(false); }}>
-                                    <Download size={16} className="text-surface-400" /> Download ZIP
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 transition-colors" onClick={handleRestore}>
+                                    <FolderInput size={16} /> Restore
                                 </button>
                                 <div className="h-px bg-surface-100 my-1 mx-2"></div>
                                 <button className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors" onClick={handleDelete}>
-                                    <Trash2 size={16} /> Delete
+                                    <Trash2 size={16} /> Delete Permanently
                                 </button>
                             </div>
                         </>
@@ -810,13 +475,13 @@ function FolderItem({ folder, viewMode, onClick, isSelected, onToggleSelect, onR
                 <div className="relative">
                     <FolderIcon className="text-brand fill-brand/10 w-24 h-24 mb-3" />
                 </div>
-                <span className="text-sm font-semibold text-surface-900 text-center truncate w-full px-2 mt-2">{folder.name}</span>
+                <span className="text-sm font-bold text-surface-900 text-center truncate w-full px-2 mt-2">{folder.name}</span>
             </div>
         </div>
     );
 }
 
-function FileItem({ file, viewMode, onClick, isSelected, onToggleSelect, onRename, onMove, onDelete }: { file: RecordModel, viewMode: 'grid' | 'list', onClick: () => void, isSelected: boolean, onToggleSelect: () => void, onRename: (id: string, name: string) => void, onMove: () => void, onDelete: () => void }) {
+function FileItem({ file, viewMode, onRefetch, isSelected, onToggleSelect, onDelete, userId }: { file: RecordModel, viewMode: 'grid' | 'list', onRefetch: () => void, isSelected: boolean, onToggleSelect: () => void, onDelete: () => void, userId: string }) {
     const [showMenu, setShowMenu] = useState(false);
     const isImage = file.type?.startsWith('image/') || false;
     const isVideo = file.type?.startsWith('video/') || false;
@@ -829,16 +494,14 @@ function FileItem({ file, viewMode, onClick, isSelected, onToggleSelect, onRenam
         setShowMenu(false);
     };
 
-    const handleDownload = (e: React.MouseEvent) => {
+    const handleRestore = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        downloadSingleFile(file);
-        setShowMenu(false);
-    };
-
-    const handleRenameClick = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        onRename(file.id, file.name);
-        setShowMenu(false);
+        try {
+            await restoreFromTrash([{ type: 'file', id: file.id }], userId);
+            onRefetch();
+        } catch (err) {
+            alert('Restore failed');
+        }
     };
 
     const handleSelect = (e: React.MouseEvent) => {
@@ -849,8 +512,7 @@ function FileItem({ file, viewMode, onClick, isSelected, onToggleSelect, onRenam
     if (viewMode === 'list') {
         return (
             <div
-                className={`flex items-center justify-between p-3.5 bg-white border ${isSelected ? 'border-brand bg-brand/5 shadow-sm shadow-brand/5' : 'border-surface-100'} rounded-xl hover:border-brand/30 hover:shadow-soft cursor-pointer transition-all group`}
-                onClick={onClick}
+                className={`flex items-center justify-between p-3.5 bg-white border ${isSelected ? 'border-brand bg-brand/5 shadow-sm shadow-brand/5' : 'border-surface-100'} rounded-xl cursor-default transition-all group`}
             >
                 <div className="flex items-center gap-4">
                     <button
@@ -882,20 +544,14 @@ function FileItem({ file, viewMode, onClick, isSelected, onToggleSelect, onRenam
                     </button>
                     {showMenu && (
                         <>
-                            <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}></div>
+                            <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
                             <div className="absolute right-0 mt-2 w-48 bg-white border border-surface-100 rounded-2xl shadow-premium z-20 py-2 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={handleDownload}>
-                                    <Download size={16} className="text-surface-400" /> Download
-                                </button>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={handleRenameClick}>
-                                    <Edit2 size={16} className="text-surface-400" /> Rename
-                                </button>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={(e) => { e.stopPropagation(); onMove(); setShowMenu(false); }}>
-                                    <FolderInput size={16} className="text-surface-400" /> Move
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 transition-colors" onClick={handleRestore}>
+                                    <FolderInput size={16} /> Restore
                                 </button>
                                 <div className="h-px bg-surface-100 my-1 mx-2"></div>
                                 <button className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors" onClick={handleDelete}>
-                                    <Trash2 size={16} /> Delete
+                                    <Trash2 size={16} /> Delete Permanently
                                 </button>
                             </div>
                         </>
@@ -907,8 +563,7 @@ function FileItem({ file, viewMode, onClick, isSelected, onToggleSelect, onRenam
 
     return (
         <div
-            className={`flex flex-col p-3 bg-white border ${isSelected ? 'border-brand bg-brand/5 shadow-md shadow-brand/10' : 'border-surface-100'} rounded-2xl hover:border-brand/30 hover:shadow-premium cursor-pointer transition-all relative group`}
-            onClick={onClick}
+            className={`flex flex-col p-3 bg-white border ${isSelected ? 'border-brand bg-brand/5 shadow-md shadow-brand/10' : 'border-surface-100'} rounded-2xl transition-all relative group cursor-default`}
         >
             <div className="flex justify-between items-start mb-2">
                 <button
@@ -927,20 +582,14 @@ function FileItem({ file, viewMode, onClick, isSelected, onToggleSelect, onRenam
                     </button>
                     {showMenu && (
                         <>
-                            <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}></div>
+                            <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
                             <div className="absolute right-0 top-10 w-48 bg-white border border-surface-100 rounded-2xl shadow-premium z-20 py-2 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={handleDownload}>
-                                    <Download size={16} className="text-surface-400" /> Download
-                                </button>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={handleRenameClick}>
-                                    <Edit2 size={16} className="text-surface-400" /> Rename
-                                </button>
-                                <button className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 flex items-center gap-3 transition-colors" onClick={(e) => { e.stopPropagation(); onMove(); setShowMenu(false); }}>
-                                    <FolderInput size={16} className="text-surface-400" /> Move
+                                <button className="w-full text-left px-4 py-2.5 text-sm text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 transition-colors" onClick={handleRestore}>
+                                    <FolderInput size={16} /> Restore
                                 </button>
                                 <div className="h-px bg-surface-100 my-1 mx-2"></div>
                                 <button className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors" onClick={handleDelete}>
-                                    <Trash2 size={16} /> Delete
+                                    <Trash2 size={16} /> Delete Permanently
                                 </button>
                             </div>
                         </>
@@ -948,21 +597,19 @@ function FileItem({ file, viewMode, onClick, isSelected, onToggleSelect, onRenam
                 </div>
             </div>
 
-            <div className="w-full aspect-square flex items-center justify-center bg-surface-50 rounded-2xl border border-surface-100 overflow-hidden mb-3 group-hover:shadow-inner transition-all">
-                {isImage && thumbnailUrl ? (
-                    <img src={thumbnailUrl} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-                ) : isVideo ? (
-                    <video src={thumbnailUrl || ''} className="w-full h-full object-cover" preload="metadata" muted playsInline />
-                ) : (
-                    <FileIcon className="text-surface-400 group-hover:scale-110 transition-transform duration-300" size={32} />
-                )}
-            </div>
-
-            <div className="flex flex-col px-1">
-                <span className="text-sm font-semibold text-surface-900 truncate mb-0.5">{file.name}</span>
-                <span className="text-[11px] text-surface-400">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+            <div className="h-full flex flex-col items-center justify-center pt-2 pb-4 group-hover:scale-105 transition-transform duration-300">
+                <div className="w-20 h-20 flex items-center justify-center rounded-xl bg-surface-50 overflow-hidden border border-surface-100 mb-3 shadow-sm">
+                    {isImage && thumbnailUrl ? (
+                        <img src={thumbnailUrl} alt="" className="w-full h-full object-cover" />
+                    ) : isVideo ? (
+                        <video src={thumbnailUrl || ''} className="w-full h-full object-cover" preload="metadata" muted playsInline />
+                    ) : (
+                        <FileIcon className="text-surface-400 w-10 h-10" />
+                    )}
+                </div>
+                <span className="text-xs font-bold text-surface-900 text-center truncate w-full px-2">{file.name}</span>
+                <span className="text-[10px] text-surface-400 mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
             </div>
         </div>
     );
 }
-
