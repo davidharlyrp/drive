@@ -14,7 +14,7 @@ export default function FileExplorer() {
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const { folders, files, breadcrumbs, loading, refetch } = useStorage(folderId || 'root');
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const { user, token } = useAuthStore();
+    const { user, token, updateStorage } = useAuthStore();
     const [previewFile, setPreviewFile] = useState<RecordModel | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [selectedItems, setSelectedItems] = useState<{ type: 'folder' | 'file', id: string }[]>([]);
@@ -112,6 +112,7 @@ export default function FileExplorer() {
                 }
             }
             refetch();
+            updateStorage();
         } catch (err: any) {
             console.error('Batch upload error:', err);
             refetch();
@@ -159,6 +160,7 @@ export default function FileExplorer() {
             }
             setSelectedItems([]);
             refetch();
+            updateStorage();
         } catch (err: any) {
             alert('Batch delete failed: ' + err.message);
             refetch();

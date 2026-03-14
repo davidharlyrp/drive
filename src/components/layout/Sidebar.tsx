@@ -1,5 +1,7 @@
 import { Cloud, HardDrive, Share2, Star, Trash2, Settings, X } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useAuthStore } from '../../store/useAuthStore';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -7,6 +9,23 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
+    const { storageUsed, updateStorage } = useAuthStore();
+
+    useEffect(() => {
+        updateStorage();
+    }, [updateStorage]);
+
+    const formatSize = (bytes: number) => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    };
+
+    const limit = 15 * 1024 * 1024 * 1024; // 15GB
+    const progress = Math.min((storageUsed / limit) * 100, 100);
+
     return (
         <>
             {/* Mobile Overlay */}
@@ -48,12 +67,15 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                         <span className="text-sm">Settings</span>
                     </div>
                     <div className="mt-4">
-                        <div className="flex justify-between text-xs mb-1 text-mono-400">
+                        <div className="flex justify-between text-[10px] mb-1.5 text-mono-400 font-medium tracking-wide uppercase">
                             <span>Storage</span>
-                            <span>4.2 GB / 15 GB</span>
+                            <span>{formatSize(storageUsed)} / 15 GB</span>
                         </div>
                         <div className="h-1.5 w-full bg-mono-800 rounded-full overflow-hidden">
-                            <div className="h-full bg-army w-[28%] rounded-full"></div>
+                            <div
+                                className="h-full bg-army transition-all duration-500 rounded-full"
+                                style={{ width: `${progress}%` }}
+                            ></div>
                         </div>
                     </div>
                 </div>
