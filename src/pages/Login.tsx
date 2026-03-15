@@ -8,6 +8,7 @@ export default function Login() {
     const { isAuthenticated, setUser } = useAuthStore();
     const [isRegistering, setIsRegistering] = useState(false);
     const [email, setEmail] = useState('');
+    const [name, setName] = useState('');
     const [password, setPassword] = useState('');
 
     if (isAuthenticated) {
@@ -20,8 +21,10 @@ export default function Login() {
             if (isRegistering) {
                 await pb.collection('users').create({
                     email,
+                    name,
                     password,
                     passwordConfirm: password,
+                    emailVisibility: true,
                 });
             }
             const authData = await pb.collection('users').authWithPassword(email, password);
@@ -61,6 +64,19 @@ export default function Login() {
                             required
                         />
                     </div>
+                    {isRegistering && (
+                        <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-surface-700 ml-1">Full Name</label>
+                            <input
+                                type="text"
+                                placeholder="John Doe"
+                                className="w-full bg-surface-50 border border-surface-200 text-surface-900 text-sm px-4 py-3 rounded-xl focus:outline-none focus:border-brand focus:bg-white focus:ring-4 focus:ring-brand/5 transition-all placeholder-surface-300 font-medium"
+                                value={name}
+                                onChange={e => setName(e.target.value)}
+                                required
+                            />
+                        </div>
+                    )}
                     <div className="flex flex-col gap-2">
                         <label className="text-xs font-bold text-surface-700 ml-1">Password</label>
                         <input

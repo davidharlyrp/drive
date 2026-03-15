@@ -8,9 +8,11 @@ interface MoveModalProps {
     itemsToMove: { type: 'folder' | 'file', id: string, name: string }[];
     onClose: () => void;
     onConfirm: (destinationId: string | '') => Promise<void>;
+    isSharedView?: boolean;
+    currentFolderId?: string;
 }
 
-export function MoveModal({ itemsToMove, onClose, onConfirm }: MoveModalProps) {
+export function MoveModal({ itemsToMove, onClose, onConfirm, isSharedView, currentFolderId }: MoveModalProps) {
     const [folders, setFolders] = useState<RecordModel[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedFolderId, setSelectedFolderId] = useState<string | ''>('');
@@ -22,17 +24,45 @@ export function MoveModal({ itemsToMove, onClose, onConfirm }: MoveModalProps) {
         if (!user) return;
         setLoading(true);
         try {
-            const res = await pb.collection('folders').getFullList({
-                filter: `parent = "" && user_id = "${user.id}"`,
-                sort: 'name'
-            });
-            setFolders(res);
+            if (isSharedView) {
+                // Fetch all shared folders where I am NOT the owner
+                const allShared = await pb.collection('folders').getFullList({
+                    filter: `shared_with ~ "${user.id}" && user_id != "${user.id}" && is_trash = false`,
+                    sort: 'name'
+                });
+                const sharedIds = new Set(allShared.map(f => f.id));
+
+                // Helper to verify if a parent is an entry point
+                const entryPoints: any[] = [];
+                for (const f of allShared) {
+                    let isRoot = false;
+                    if (!f.parent) {
+                        isRoot = true;
+                    } else if (!sharedIds.has(f.parent)) {
+                        try {
+                            const parent = await pb.collection('folders').getOne(f.parent);
+                            isRoot = parent.user_id !== user.id;
+                        } catch {
+                            isRoot = true;
+                        }
+                    }
+                    if (isRoot) entryPoints.push(f);
+                }
+                setFolders(entryPoints);
+            }
+            else {
+                const res = await pb.collection('folders').getFullList({
+                    filter: `parent = "" && user_id = "${user.id}" && is_trash = false`,
+                    sort: 'name'
+                });
+                setFolders(res);
+            }
         } catch (err) {
             console.error('Error fetching root folders:', err);
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [user, isSharedView]);
 
     useEffect(() => {
         fetchRootFolders();
@@ -41,8 +71,9 @@ export function MoveModal({ itemsToMove, onClose, onConfirm }: MoveModalProps) {
     const fetchSubFolders = async (parentId: string) => {
         if (subFolders[parentId] || !user) return;
         try {
+            const filter = `parent = "${parentId}" && (user_id = "${user.id}" || shared_with ~ "${user.id}") && is_trash = false`;
             const res = await pb.collection('folders').getFullList({
-                filter: `parent = "${parentId}" && user_id = "${user.id}"`,
+                filter,
                 sort: 'name'
             });
             setSubFolders(prev => ({ ...prev, [parentId]: res }));
@@ -65,7 +96,10 @@ export function MoveModal({ itemsToMove, onClose, onConfirm }: MoveModalProps) {
 
     const isDisabled = (folderId: string) => {
         // Prevent moving a folder into itself
-        return itemsToMove.some(item => item.type === 'folder' && item.id === folderId);
+        if (itemsToMove.some(item => item.type === 'folder' && item.id === folderId)) return true;
+        // Prevent moving to the current folder
+        if (folderId === currentFolderId) return true;
+        return false;
     };
 
     const renderFolder = (folder: RecordModel, depth: number = 0) => {
@@ -115,17 +149,20 @@ export function MoveModal({ itemsToMove, onClose, onConfirm }: MoveModalProps) {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-2 bg-white custom-scrollbar">
-                    <div
-                        className={`flex items-center gap-3 p-4 rounded-2xl cursor-pointer transition-all ${selectedFolderId === '' ? 'bg-brand/5 border border-brand/20 shadow-sm' : 'hover:bg-surface-50 text-surface-600'
-                            }`}
-                        onClick={() => setSelectedFolderId('')}
-                    >
-                        <div className="w-8" /> {/* Spacer for chevron align */}
-                        <HardDrive size={20} className={selectedFolderId === '' ? 'text-brand' : 'text-surface-400'} />
-                        <span className={`text-sm font-bold ${selectedFolderId === '' ? 'text-brand' : 'text-surface-900'}`}>My Files (Root)</span>
-                    </div>
-
-                    <div className="h-px bg-surface-100 my-4 mx-2"></div>
+                    {!isSharedView && (
+                        <>
+                            <div
+                                className={`flex items-center gap-3 p-4 rounded-2xl cursor-pointer transition-all ${selectedFolderId === '' ? 'bg-brand/5 border border-brand/20 shadow-sm' : 'hover:bg-surface-50 text-surface-600'
+                                    }`}
+                                onClick={() => setSelectedFolderId('')}
+                            >
+                                <div className="w-8" /> {/* Spacer for chevron align */}
+                                <HardDrive size={20} className={selectedFolderId === '' ? 'text-brand' : 'text-surface-400'} />
+                                <span className={`text-sm font-bold ${selectedFolderId === '' ? 'text-brand' : 'text-surface-900'}`}>My Files (Root)</span>
+                            </div>
+                            <div className="h-px bg-surface-100 my-4 mx-2"></div>
+                        </>
+                    )}
 
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-12 gap-3">

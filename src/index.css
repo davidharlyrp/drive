@@ -51,11 +51,11 @@ body {
   }
 
   .btn-primary {
-    @apply bg-brand hover:bg-brand-dark text-white text-[13px] font-bold md:px-5 px-4 md:py-2.5 py-2 rounded-xl shadow-md shadow-brand/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50 disabled:active:scale-100;
+    @apply bg-brand hover:bg-brand-dark text-white text-[13px] font-bold px-4 py-2 rounded-xl shadow-md shadow-brand/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50 disabled:active:scale-100;
   }
 
   .btn-secondary {
-    @apply bg-white hover:bg-surface-50 text-surface-600 text-[13px] font-bold md:px-5 px-4 md:py-2.5 py-2 transition-all border border-surface-100 rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95;
+    @apply bg-white hover:bg-surface-50 text-surface-600 text-[13px] font-bold px-4 py-2 transition-all border border-surface-100 rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95;
   }
 
   .btn-ghost {

@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  onlyoffice-server:
+    build: .
+    image: onlyoffice-integration-server:latest
+    container_name: onlyoffice-server-container
+    restart: always
+    ports:
+      - "4081:4081"
+    env_file:
+      - .env
+    # Optional: ensure it runs in the same network if other services are present
+    # networks:
+    #   - cloud-drive-network
+
+    # networks:
+    #   cloud-drive-network:
+    #     driver: bridge

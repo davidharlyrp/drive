@@ -16,9 +16,10 @@ interface FileViewerModalProps {
     totalFiles?: number;
     hasMore?: boolean;
     onLoadMore?: () => void;
+    isSharedView?: boolean;
 }
 
-export function FileViewerModal({ file, files, onClose, onRefetch, onRename, onMove, onDelete, onDownload, totalFiles, hasMore, onLoadMore }: FileViewerModalProps) {
+export function FileViewerModal({ file, files, onClose, onRefetch, onRename, onMove, onDelete, onDownload, totalFiles, hasMore, onLoadMore, isSharedView }: FileViewerModalProps) {
     const initialIndex = files.findIndex(f => f.id === file.id);
     const [currentIndex, setCurrentIndex] = useState(initialIndex >= 0 ? initialIndex : 0);
     const [textContent, setTextContent] = useState<string | null>(null);
@@ -32,13 +33,58 @@ export function FileViewerModal({ file, files, onClose, onRefetch, onRename, onM
     const touchEnd = useRef<{ x: number, y: number } | null>(null);
 
     const isNavigatable = files.length > 0 && initialIndex >= 0;
-    const activeFile = isNavigatable ? files[currentIndex] : file;
-    const fileUrl = pb.files.getURL(activeFile, activeFile.file);
+    const [localActiveFile, setLocalActiveFile] = useState<RecordModel>(isNavigatable ? files[currentIndex] : file);
+    const fileUrl = pb.files.getURL(localActiveFile, localActiveFile.file);
+
+    // Sync local state when props or index change
+    useEffect(() => {
+        setLocalActiveFile(isNavigatable ? files[currentIndex] : file);
+    }, [currentIndex, files, file, isNavigatable]);
+
+    // Realtime subscription to the active file
+    useEffect(() => {
+        if (!localActiveFile.id) return;
+
+        console.log('Subscribing to realtime updates for file:', localActiveFile.id);
+
+        // Subscribe to this specific record change
+        const unsubscribe = pb.collection('files').subscribe(localActiveFile.id, (e) => {
+            if (e.action === 'update') {
+                console.log('File updated in realtime:', e.record.id);
+                setLocalActiveFile(e.record);
+                // Also trigger parent refetch to keep the list updated
+                onRefetch();
+            }
+        });
+
+        return () => {
+            unsubscribe.then(unsub => unsub());
+        };
+    }, [localActiveFile.id, onRefetch]);
+
+    const activeFile = localActiveFile;
 
     const activeIsImage = activeFile.type?.startsWith('image/') || false;
     const activeIsVideo = activeFile.type?.startsWith('video/') || false;
-    const activeIsPdf = activeFile.type === 'application/pdf' || activeFile.name.endsWith('.pdf');
-    const activeIsText = activeFile.type?.startsWith('text/') || activeFile.name.endsWith('.txt') || activeFile.name.endsWith('.md') || false;
+    const activeIsPdf = activeFile.type === 'application/pdf' || activeFile.name.toLowerCase().endsWith('.pdf');
+    const activeIsText = activeFile.type?.startsWith('text/') || activeFile.name.toLowerCase().endsWith('.txt') || activeFile.name.toLowerCase().endsWith('.md') || false;
+
+    // Office File Support
+    const officeExtensions = {
+        excel: ['.xls', '.xlsx', '.csv', '.ods', '.xlsm', '.xlt', '.xltm', '.xltx', '.ots'],
+        word: ['.doc', '.docx', '.odt', '.rtf', '.docm', '.dot', '.dotm', '.dotx', '.ott', '.txt', '.html', '.htm'],
+        powerpoint: ['.ppt', '.pptx', '.odp', '.pptm', '.pot', '.potm', '.potx', '.pps', '.ppsm', '.ppsx', '.otp']
+    };
+
+    const isExcel = officeExtensions.excel.some(ext => activeFile.name.toLowerCase().endsWith(ext));
+    const isWord = officeExtensions.word.some(ext => activeFile.name.toLowerCase().endsWith(ext));
+    const isPPT = officeExtensions.powerpoint.some(ext => activeFile.name.toLowerCase().endsWith(ext));
+    const activeIsOffice = isExcel || isWord || isPPT;
+
+    const handleEditOffice = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        window.open(`/editor/${activeFile.id}`, '_blank');
+    };
 
     useEffect(() => {
         if (activeIsText) {
@@ -199,6 +245,14 @@ export function FileViewerModal({ file, files, onClose, onRefetch, onRename, onM
                             Edit File
                         </button>
                     )}
+                    {activeIsOffice && !isEditing && (
+                        <button
+                            className="bg-brand text-white text-sm font-bold px-5 py-2.5 rounded-xl hover:bg-brand-dark transition-all shadow-md shadow-brand/20 active:scale-95"
+                            onClick={handleEditOffice}
+                        >
+                            Edit File
+                        </button>
+                    )}
                     {activeIsText && isEditing && (
                         <div className="flex items-center gap-2">
                             <button
@@ -223,17 +277,19 @@ export function FileViewerModal({ file, files, onClose, onRefetch, onRename, onM
                         <div className="flex items-center gap-1 sm:gap-3">
                             {/* Desktop Buttons */}
                             <div className="hidden md:flex items-center gap-1 sm:gap-3">
-                                <button
-                                    className="text-surface-400 hover:text-amber-500 p-2.5 rounded-full hover:bg-amber-50 transition-all border border-transparent hover:border-amber-100"
-                                    title={activeFile.is_starred ? "Unstar" : "Star"}
-                                    onClick={async (e) => {
-                                        e.stopPropagation();
-                                        await toggleStarred([{ type: 'file', id: activeFile.id }], !activeFile.is_starred, pb.authStore.model!.id);
-                                        onRefetch();
-                                    }}
-                                >
-                                    <Star size={20} className={activeFile.is_starred ? "fill-amber-500 text-amber-500" : ""} />
-                                </button>
+                                {!isSharedView && (
+                                    <button
+                                        className="text-surface-400 hover:text-amber-500 p-2.5 rounded-full hover:bg-amber-50 transition-all border border-transparent hover:border-amber-100"
+                                        title={activeFile.is_starred ? "Unstar" : "Star"}
+                                        onClick={async (e) => {
+                                            e.stopPropagation();
+                                            await toggleStarred([{ type: 'file', id: activeFile.id }], !activeFile.is_starred, pb.authStore.model!.id);
+                                            onRefetch();
+                                        }}
+                                    >
+                                        <Star size={20} className={activeFile.is_starred ? "fill-amber-500 text-amber-500" : ""} />
+                                    </button>
+                                )}
                                 {onRename && (
                                     <button
                                         className="text-surface-400 hover:text-surface-900 p-2.5 rounded-full hover:bg-surface-100 transition-all border border-transparent hover:border-surface-50"
@@ -243,7 +299,7 @@ export function FileViewerModal({ file, files, onClose, onRefetch, onRename, onM
                                         <Edit2 size={20} />
                                     </button>
                                 )}
-                                {onMove && (
+                                {onMove && !isSharedView && (
                                     <button
                                         className="text-surface-400 hover:text-surface-900 p-2.5 rounded-full hover:bg-surface-100 transition-all border border-transparent hover:border-surface-50"
                                         title="Move"
@@ -252,7 +308,7 @@ export function FileViewerModal({ file, files, onClose, onRefetch, onRename, onM
                                         <FolderInput size={20} />
                                     </button>
                                 )}
-                                {onDownload && (
+                                {onDownload && !activeIsOffice && (
                                     <button
                                         className="text-surface-400 hover:text-surface-900 p-2.5 rounded-full hover:bg-surface-100 transition-all border border-transparent hover:border-surface-50"
                                         title="Download"
@@ -286,17 +342,19 @@ export function FileViewerModal({ file, files, onClose, onRefetch, onRename, onM
                                         className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-premium border border-surface-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 flex flex-col"
                                         onClick={e => e.stopPropagation()}
                                     >
-                                        <button
-                                            className="w-full text-left px-4 py-2.5 text-sm font-semibold text-surface-700 hover:bg-surface-50 hover:text-brand flex items-center gap-3 transition-colors"
-                                            onClick={async (e) => {
-                                                e.stopPropagation();
-                                                await toggleStarred([{ type: 'file', id: activeFile.id }], !activeFile.is_starred, pb.authStore.model!.id);
-                                                onRefetch();
-                                                setIsMenuOpen(false);
-                                            }}
-                                        >
-                                            <Star size={18} className={activeFile.is_starred ? "fill-amber-500 text-amber-500" : "opacity-70"} /> {activeFile.is_starred ? "Unstar" : "Star"}
-                                        </button>
+                                        {!isSharedView && (
+                                            <button
+                                                className="w-full text-left px-4 py-2.5 text-sm font-semibold text-surface-700 hover:bg-surface-50 hover:text-brand flex items-center gap-3 transition-colors"
+                                                onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    await toggleStarred([{ type: 'file', id: activeFile.id }], !activeFile.is_starred, pb.authStore.model!.id);
+                                                    onRefetch();
+                                                    setIsMenuOpen(false);
+                                                }}
+                                            >
+                                                <Star size={18} className={activeFile.is_starred ? "fill-amber-500 text-amber-500" : "opacity-70"} /> {activeFile.is_starred ? "Unstar" : "Star"}
+                                            </button>
+                                        )}
                                         {onRename && (
                                             <button
                                                 className="w-full text-left px-4 py-2.5 text-sm font-semibold text-surface-700 hover:bg-surface-50 hover:text-brand flex items-center gap-3 transition-colors"
@@ -305,7 +363,7 @@ export function FileViewerModal({ file, files, onClose, onRefetch, onRename, onM
                                                 <Edit2 size={18} className="opacity-70" /> Rename
                                             </button>
                                         )}
-                                        {onMove && (
+                                        {onMove && !isSharedView && (
                                             <button
                                                 className="w-full text-left px-4 py-2.5 text-sm font-semibold text-surface-700 hover:bg-surface-50 hover:text-brand flex items-center gap-3 transition-colors"
                                                 onClick={(e) => { e.stopPropagation(); onClose(); onMove(activeFile); }}
@@ -313,7 +371,7 @@ export function FileViewerModal({ file, files, onClose, onRefetch, onRename, onM
                                                 <FolderInput size={18} className="opacity-70" /> Move
                                             </button>
                                         )}
-                                        {onDownload && (
+                                        {onDownload && !activeIsOffice && (
                                             <button
                                                 className="w-full text-left px-4 py-2.5 text-sm font-semibold text-surface-700 hover:bg-surface-50 hover:text-brand flex items-center gap-3 transition-colors"
                                                 onClick={(e) => { e.stopPropagation(); onDownload(activeFile); setIsMenuOpen(false); }}
@@ -433,19 +491,30 @@ export function FileViewerModal({ file, files, onClose, onRefetch, onRename, onM
                             <div className="w-24 h-24 bg-surface-50 rounded-[2rem] flex items-center justify-center mb-8 border border-surface-100">
                                 <FileIcon size={48} className="text-surface-300" />
                             </div>
-                            <h3 className="text-2xl font-black text-surface-900 mb-3">No Preview Available</h3>
+                            <h3 className="text-2xl font-black text-surface-900 mb-3">{activeIsOffice ? 'Office Document' : 'No Preview Available'}</h3>
                             <p className="text-sm font-medium text-surface-400 mb-10 leading-relaxed">
-                                This extension ({activeFile.type?.split('/')[1]?.toUpperCase() || 'FILE'}) cannot be previewed. Would you like to download it instead?
+                                {activeIsOffice
+                                    ? `This ${activeFile.type?.split('/')[1]?.toUpperCase() || 'OFFICE'} document can be opened and edited online.`
+                                    : `This extension (${activeFile.type?.split('/')[1]?.toUpperCase() || 'FILE'}) cannot be previewed. Would you like to download it instead?`}
                             </p>
-                            <a
-                                href={fileUrl}
-                                download
-                                target="_blank"
-                                rel="noreferrer"
-                                className="w-full bg-brand hover:shadow-lg hover:shadow-brand/20 text-white py-5 px-10 rounded-2xl font-bold transition-all active:scale-95 text-center flex items-center justify-center gap-2"
-                            >
-                                Download Document
-                            </a>
+                            {activeIsOffice ? (
+                                <button
+                                    onClick={handleEditOffice}
+                                    className="w-full bg-brand hover:shadow-lg hover:shadow-brand/20 text-white py-5 px-10 rounded-2xl font-bold transition-all active:scale-95 text-center flex items-center justify-center gap-2"
+                                >
+                                    Open & Edit File
+                                </button>
+                            ) : (
+                                <a
+                                    href={fileUrl}
+                                    download
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="w-full bg-brand hover:shadow-lg hover:shadow-brand/20 text-white py-5 px-10 rounded-2xl font-bold transition-all active:scale-95 text-center flex items-center justify-center gap-2"
+                                >
+                                    Download Document
+                                </a>
+                            )}
                         </div>
                     )}
                 </div>

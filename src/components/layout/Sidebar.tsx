@@ -5,6 +5,7 @@ import { pb } from '../../lib/pb';
 import type { RecordModel } from 'pocketbase';
 import { useAuthStore } from '../../store/useAuthStore';
 import { SettingsModal } from '../SettingsModal';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -13,6 +14,7 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
     const { user, storageUsed, updateStorage } = useAuthStore();
+    const { showHidden } = useSettingsStore();
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isGalleryExpanded, setIsGalleryExpanded] = useState(false);
     const [mediaFolders, setMediaFolders] = useState<RecordModel[]>([]);
@@ -27,8 +29,9 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
             if (!user) return;
             try {
                 // Fetch only files that are media
+                const hiddenFilter = !showHidden ? '&& is_hidden = false' : '';
                 const mediaFiles = await pb.collection('files').getFullList({
-                    filter: `user_id = "${user.id}" && is_trash = false && (type ~ "image/" || type ~ "video/")`,
+                    filter: `user_id = "${user.id}" && is_trash = false ${hiddenFilter} && (type ~ "image/" || type ~ "video/")`,
                     fields: 'folder_id'
                 });
 
@@ -107,7 +110,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 </div>
 
                 <nav className="flex-1 overflow-y-auto py-6 px-3.5 space-y-1 custom-scrollbar">
-                    <NavItem to="/files/root" icon={<HardDrive size={18} />} label="My Files" />
+                    <NavItem to="/files/root" icon={<HardDrive size={18} />} label="My Files" isActive={location.pathname.startsWith('/files')} />
 
                     <div className="space-y-1">
                         <button
@@ -142,27 +145,30 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                                     <span>All Media</span>
                                 </NavLink>
 
-                                {mediaFolders.map(folder => (
-                                    <NavLink
-                                        key={folder.id}
-                                        to={`/gallery?folder=${folder.id}`}
-                                        className={() =>
-                                            `flex items-center gap-3 px-4 py-1.5 text-[13px] rounded-lg transition-all ${location.search === `?folder=${folder.id}`
-                                                ? 'text-brand font-bold bg-brand/5'
-                                                : 'text-surface-400 hover:text-surface-900 hover:bg-surface-50'
-                                            }`
-                                        }
-                                    >
-                                        <Folder size={14} className="opacity-40" />
-                                        <span className="truncate">{folder.name}</span>
-                                    </NavLink>
-                                ))}
+                                {mediaFolders.map(folder => {
+                                    if (folder.is_hidden && !showHidden) return null;
+                                    return (
+                                        <NavLink
+                                            key={folder.id}
+                                            to={`/gallery?folder=${folder.id}`}
+                                            className={() =>
+                                                `flex items-center gap-3 px-4 py-1.5 text-[13px] rounded-lg transition-all ${location.search === `?folder=${folder.id}`
+                                                    ? 'text-brand font-bold bg-brand/5'
+                                                    : 'text-surface-400 hover:text-surface-900 hover:bg-surface-50'
+                                                } ${folder.is_hidden ? 'opacity-50' : ''}`
+                                            }
+                                        >
+                                            <Folder size={14} className="opacity-40" />
+                                            <span className="truncate">{folder.name}</span>
+                                        </NavLink>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
 
-                    {/* <NavItem to="/shared" icon={<Share2 size={18} />} label="Shared" /> */}
-                    <NavItem to="/starred" icon={<Star size={18} />} label="Starred" />
+
+                    <NavItem to="/starred" icon={<Star size={18} />} label="Starred" isActive={location.pathname.startsWith('/starred')} />
                     <NavItem to="/trash" icon={<Trash2 size={18} />} label="Trash" />
                 </nav>
 
@@ -195,12 +201,12 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
     );
 }
 
-function NavItem({ to, icon, label }: { to: string, icon: React.ReactNode, label: string }) {
+function NavItem({ to, icon, label, isActive: isActiveProp }: { to: string, icon: React.ReactNode, label: string, isActive?: boolean }) {
     return (
         <NavLink
             to={to}
             className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-2 text-sm rounded-lg transition-all duration-200 group ${isActive
+                `flex items-center gap-3 px-4 py-2 text-sm rounded-lg transition-all duration-200 group ${(isActiveProp !== undefined ? isActiveProp : isActive)
                     ? 'bg-brand text-white shadow-md shadow-brand/20 font-semibold'
                     : 'text-surface-500 hover:bg-surface-50 hover:text-surface-900'
                 }`

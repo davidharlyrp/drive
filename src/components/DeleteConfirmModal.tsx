@@ -1,4 +1,4 @@
-import { Trash2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEffect } from 'react';
 
 interface DeleteConfirmModalProps {
@@ -31,9 +31,6 @@ export function DeleteConfirmModal({ isOpen, title, message, onClose, onConfirm,
             >
                 <div className="p-5 flex justify-between items-center border-b border-surface-100">
                     <div className="flex items-center gap-2.5">
-                        <div className="p-2 bg-red-50 text-red-600 rounded-lg">
-                            <Trash2 size={20} />
-                        </div>
                         <h2 className="text-lg font-bold text-surface-900">{title}</h2>
                     </div>
                     <button

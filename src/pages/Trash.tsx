@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { LayoutGrid, List, ArrowDownUp, File as FileIcon, Folder as FolderIcon, MoreVertical, Trash2, CheckSquare, Square, FolderInput, Calendar, Type, Database, ArrowDown, ArrowUp } from 'lucide-react';
+import { LayoutGrid, List, ArrowDownUp, File as FileIcon, Folder as FolderIcon, MoreVertical, Trash2, CheckSquare, Square, FolderInput, Calendar, Type, Database, ArrowDown, ArrowUp, FileSpreadsheet, FileEdit, Presentation } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStorage } from '../hooks/useStorage';
 import type { RecordModel } from 'pocketbase';
@@ -15,7 +15,8 @@ export default function Trash() {
     const { folderId } = useParams();
     const navigate = useNavigate();
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const { folders, files, breadcrumbs, loading, loadingMore, hasMore, loadMore, refetch } = useStorage(folderId || 'root', true);
+    const { showHidden } = useSettingsStore();
+    const { folders, files, breadcrumbs, loading, loadingMore, hasMore, loadMore, refetch } = useStorage(folderId || 'root', true, false, false, showHidden);
     const loadMoreRef = useRef<HTMLDivElement>(null);
     const { user, updateStorage } = useAuthStore();
     const { gridColumns } = useSettingsStore();
@@ -546,10 +547,30 @@ function FolderItem({ folder, viewMode, onClick, onRefetch, isSelected, onToggle
 
 function FileItem({ file, viewMode, onClick, onRefetch, isSelected, onToggleSelect, onDelete, userId }: { file: RecordModel, viewMode: 'grid' | 'list', onClick: () => void, onRefetch: () => void, isSelected: boolean, onToggleSelect: () => void, onDelete: () => void, userId: string }) {
     const [showMenu, setShowMenu] = useState(false);
+
     const isImage = file.type?.startsWith('image/') || false;
     const isVideo = file.type?.startsWith('video/') || false;
     const fileUrl = pb.files.getURL(file, file.file);
     const thumbnailUrl = isImage ? pb.files.getURL(file, file.file, { thumb: '400x400' }) : (isVideo ? `${fileUrl}#t=0.001` : null);
+
+    const officeExtensions = {
+        excel: ['.xls', '.xlsx', '.csv', '.ods', '.xlsm', '.xlt', '.xltm', '.xltx', '.ots'],
+        word: ['.doc', '.docx', '.odt', '.rtf', '.docm', '.dot', '.dotm', '.dotx', '.ott', '.txt', '.html', '.htm'],
+        powerpoint: ['.ppt', '.pptx', '.odp', '.pptm', '.pot', '.potm', '.potx', '.pps', '.ppsm', '.ppsx', '.otp']
+    };
+
+    const isExcel = officeExtensions.excel.some(ext => file.name.toLowerCase().endsWith(ext));
+    const isWord = officeExtensions.word.some(ext => file.name.toLowerCase().endsWith(ext));
+    const isPPT = officeExtensions.powerpoint.some(ext => file.name.toLowerCase().endsWith(ext));
+
+    const getFileIcon = (size = 22) => {
+        if (isImage && thumbnailUrl) return <img src={thumbnailUrl} alt="" className="w-full h-full object-cover" />;
+        if (isVideo) return <video src={thumbnailUrl || ''} className="w-full h-full object-cover" preload="metadata" muted playsInline />;
+        if (isExcel) return <FileSpreadsheet className="text-emerald-500" size={size} />;
+        if (isWord) return <FileEdit className="text-blue-500" size={size} />;
+        if (isPPT) return <Presentation className="text-orange-500" size={size} />;
+        return <FileIcon className="text-surface-400" size={size} />;
+    };
 
     const handleDelete = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -575,7 +596,7 @@ function FileItem({ file, viewMode, onClick, onRefetch, isSelected, onToggleSele
     if (viewMode === 'list') {
         return (
             <div
-                className={`flex items-center justify-between p-3.5 bg-white border ${isSelected ? 'border-brand bg-brand/5 shadow-sm shadow-brand/5' : 'border-surface-100'} rounded-xl cursor-pointer transition-all group`}
+                className={`flex items-center justify-between p-3.5 bg-white border ${isSelected ? 'border-brand bg-brand/5 shadow-sm shadow-brand/5' : 'border-surface-100'} rounded-xl hover:border-brand/30 hover:shadow-soft cursor-pointer transition-all group relative ${showMenu ? 'z-30' : 'z-auto'} ${file.is_hidden ? 'opacity-50' : 'opacity-100'}`}
                 onClick={onClick}
             >
                 <div className="flex items-center gap-4">
@@ -586,16 +607,10 @@ function FileItem({ file, viewMode, onClick, onRefetch, isSelected, onToggleSele
                         {isSelected ? <CheckSquare size={20} /> : <Square size={20} className="opacity-0 group-hover:opacity-100" />}
                     </button>
                     <div className="w-12 h-12 flex items-center justify-center rounded-lg bg-surface-50 overflow-hidden border border-surface-100">
-                        {isImage && thumbnailUrl ? (
-                            <img src={thumbnailUrl} alt="" className="w-full h-full object-cover" />
-                        ) : isVideo ? (
-                            <video src={thumbnailUrl || ''} className="w-full h-full object-cover" preload="metadata" muted playsInline />
-                        ) : (
-                            <FileIcon className="text-surface-400" size={22} />
-                        )}
+                        {getFileIcon()}
                     </div>
                     <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-surface-900">{file.name}</span>
+                        <span className="text-sm font-semibold text-surface-900 truncate">{file.name}</span>
                         <span className="text-[11px] text-surface-400">{(file.size / 1024 / 1024).toFixed(2)} MB • {file.type?.split('/')[1]?.toUpperCase() || 'FILE'}</span>
                     </div>
                 </div>
@@ -608,7 +623,7 @@ function FileItem({ file, viewMode, onClick, onRefetch, isSelected, onToggleSele
                     </button>
                     {showMenu && (
                         <>
-                            <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
+                            <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}></div>
                             <div className="absolute right-0 mt-2 w-48 bg-white border border-surface-100 rounded-2xl shadow-premium z-20 py-2 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                                 <button className="w-full text-left px-4 py-2.5 text-sm text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 transition-colors" onClick={handleRestore}>
                                     <FolderInput size={16} /> Restore
@@ -627,10 +642,10 @@ function FileItem({ file, viewMode, onClick, onRefetch, isSelected, onToggleSele
 
     return (
         <div
-            className={`flex flex-col p-3 bg-white border ${isSelected ? 'border-brand bg-brand/5 shadow-md shadow-brand/10' : 'border-surface-100'} rounded-2xl transition-all relative group cursor-pointer`}
+            className={`flex flex-col p-3 bg-white border ${isSelected ? 'border-brand bg-brand/5 shadow-md shadow-brand/10' : 'border-surface-100'} rounded-2xl hover:border-brand/30 hover:shadow-premium cursor-pointer transition-all relative group ${showMenu ? 'z-30' : 'z-auto'} ${file.is_hidden ? 'opacity-50' : 'opacity-100'}`}
             onClick={onClick}
         >
-            <div className="flex justify-between items-start mb-2">
+            <div className="flex justify-between items-start mb-4">
                 <button
                     onClick={handleSelect}
                     className={`transition-colors h-6 ${isSelected ? 'text-brand' : 'text-surface-300 hover:text-brand outline-none'}`}
@@ -647,7 +662,7 @@ function FileItem({ file, viewMode, onClick, onRefetch, isSelected, onToggleSele
                     </button>
                     {showMenu && (
                         <>
-                            <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
+                            <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}></div>
                             <div className="absolute right-0 top-10 w-48 bg-white border border-surface-100 rounded-2xl shadow-premium z-20 py-2 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                                 <button className="w-full text-left px-4 py-2.5 text-sm text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 transition-colors" onClick={handleRestore}>
                                     <FolderInput size={16} /> Restore
@@ -663,14 +678,8 @@ function FileItem({ file, viewMode, onClick, onRefetch, isSelected, onToggleSele
             </div>
 
             <div className="h-full flex flex-col items-center justify-center pt-2 pb-4 group-hover:scale-105 transition-transform duration-300">
-                <div className="w-20 h-20 flex items-center justify-center rounded-xl bg-surface-50 overflow-hidden border border-surface-100 mb-3 shadow-sm">
-                    {isImage && thumbnailUrl ? (
-                        <img src={thumbnailUrl} alt="" className="w-full h-full object-cover" />
-                    ) : isVideo ? (
-                        <video src={thumbnailUrl || ''} className="w-full h-full object-cover" preload="metadata" muted playsInline />
-                    ) : (
-                        <FileIcon className="text-surface-400 w-10 h-10" />
-                    )}
+                <div className="w-full aspect-square flex items-center justify-center bg-surface-50 rounded-2xl border border-surface-100 overflow-hidden mb-3 group-hover:shadow-inner transition-all">
+                    {getFileIcon(32)}
                 </div>
                 <span className="text-xs font-bold text-surface-900 text-center truncate w-full px-2">{file.name}</span>
                 <span className="text-[10px] text-surface-400 mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
@@ -678,3 +687,4 @@ function FileItem({ file, viewMode, onClick, onRefetch, isSelected, onToggleSele
         </div>
     );
 }
+

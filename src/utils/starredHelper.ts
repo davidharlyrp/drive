@@ -8,22 +8,20 @@ export async function toggleStarred(items: { type: 'folder' | 'file', id: string
         } else if (item.type === 'folder') {
             const { folders, files } = await getRecursiveItems(item.id, userId);
 
-            // Sequential updates to avoid large batch failures
-            for (const fId of files) {
-                try {
-                    await pb.collection('files').update(fId, { is_starred: starred });
-                } catch (e) {
-                    console.error(`Failed to update starred status for file ${fId}`, e);
-                }
-            }
+            // Parallel updates for files and folders
+            const fileUpdates = files.map(fId =>
+                pb.collection('files').update(fId, { is_starred: starred }).catch(e =>
+                    console.error(`Failed to update starred status for file ${fId}`, e)
+                )
+            );
 
-            for (const foldId of folders) {
-                try {
-                    await pb.collection('folders').update(foldId, { is_starred: starred });
-                } catch (e) {
-                    console.error(`Failed to update starred status for folder ${foldId}`, e);
-                }
-            }
+            const folderUpdates = folders.map(foldId =>
+                pb.collection('folders').update(foldId, { is_starred: starred }).catch(e =>
+                    console.error(`Failed to update starred status for folder ${foldId}`, e)
+                )
+            );
+
+            await Promise.all([...fileUpdates, ...folderUpdates]);
         }
     }
 }

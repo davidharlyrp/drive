@@ -56,7 +56,7 @@ export const InputModal: React.FC<InputModalProps> = ({
 
                 <form onSubmit={handleSubmit} className="p-6">
                     <div className="mb-6">
-                        <label className="block text-[10px] font-semibold text-surface-400 uppercase tracking-widest mb-2 ml-0.5">
+                        <label className="block text-[10px] font-semibold text-surface-400 tracking-widest mb-2 ml-0.5">
                             {title} Name
                         </label>
                         <input

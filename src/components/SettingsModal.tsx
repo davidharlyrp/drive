@@ -11,7 +11,7 @@ interface SettingsModalProps {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const { logout } = useAuthStore();
-    const { gridColumns, setGridColumns } = useSettingsStore();
+    const { gridColumns, setGridColumns, showHidden, setShowHidden } = useSettingsStore();
     const navigate = useNavigate();
 
     if (!isOpen) return null;
@@ -44,13 +44,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                     key={col}
                                     onClick={() => setGridColumns(col)}
                                     className={`flex-1 py-1.5 rounded-lg text-[13px] font-bold transition-all ${gridColumns === col
-                                            ? 'bg-white text-brand shadow-sm border border-surface-200'
-                                            : 'text-surface-500 hover:text-surface-900'
+                                        ? 'bg-white text-brand shadow-sm border border-surface-200'
+                                        : 'text-surface-500 hover:text-surface-900'
                                         }`}
                                 >
                                     {col}
                                 </button>
                             ))}
+                        </div>
+                    </div>
+
+                    <div className="mb-5 p-4 bg-surface-50 rounded-2xl border border-surface-100">
+                        <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                                <span className="text-[13px] font-bold text-surface-900">Show Hidden Items</span>
+                                <span className="text-[11px] text-surface-500">Display files and folders marked as hidden</span>
+                            </div>
+                            <button
+                                onClick={() => setShowHidden(!showHidden)}
+                                className={`w-10 h-6 rounded-full transition-all relative ${showHidden ? 'bg-brand' : 'bg-surface-200'}`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${showHidden ? 'left-5' : 'left-1'}`}></div>
+                            </button>
                         </div>
                     </div>
 

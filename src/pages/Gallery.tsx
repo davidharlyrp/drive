@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Image as ImageIcon, CheckSquare, Square, ArrowDownUp, ArrowDown, ArrowUp, X, FolderInput, Trash2, MoreVertical, Edit2, Star } from 'lucide-react';
+import { Image as ImageIcon, CheckSquare, Square, ArrowDownUp, ArrowDown, ArrowUp, X, FolderInput, Trash2, MoreVertical, Edit2, Star, Eye, EyeOff } from 'lucide-react';
 import { pb } from '../lib/pb';
 import { useAuthStore } from '../store/useAuthStore';
 import type { RecordModel } from 'pocketbase';
@@ -11,6 +11,7 @@ import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
 import { MoveModal } from '../components/MoveModal';
 import { InputModal } from '../components/InputModal';
 import { useSearchStore } from '../store/useSearchStore';
+import { toggleHidden } from '../utils/hideHelper';
 import { downloadItemsAsZip, downloadSingleFile, type DownloadTask } from '../utils/downloadHelper';
 import { DownloadProgressModal } from '../components/DownloadProgressModal';
 import { Download } from 'lucide-react';
@@ -21,7 +22,7 @@ export default function Gallery() {
     const [loading, setLoading] = useState(true);
     const { user } = useAuthStore();
     const [previewFile, setPreviewFile] = useState<RecordModel | null>(null);
-    const { gridColumns } = useSettingsStore();
+    const { gridColumns, showHidden } = useSettingsStore();
     const { searchQuery } = useSearchStore();
     const [searchParams] = useSearchParams();
     const folderId = searchParams.get('folder');
@@ -73,23 +74,27 @@ export default function Gallery() {
         setApiError(null);
         try {
             // Fetch only the user's non-trashed media files directly via API filter
+            const hiddenFilter = !showHidden ? '&& is_hidden = false' : '';
             const res = await pb.collection('files').getList(currentPage, 50, {
-                filter: `user_id = "${user.id}" && is_trash = false && (type ~ "image/" || type ~ "video/")`,
+                filter: `user_id = "${user.id}" && is_trash = false ${hiddenFilter} && (type ~ "image/" || type ~ "video/")`,
                 sort: '-created',
             });
 
             let mediaFiles = res.items;
+            let totalMediaCount = res.totalItems;
 
             // Filter by folder if folderId is provided (Client-side folder filter is fine once we've narrowed to the user)
             // Note: If filtering by folder, we should ideally do it at API level to support pagination correctly
             if (folderId) {
                 // If folderId exists, we should probably add it to the API filter for correct pagination
+                const hiddenFilter = !showHidden ? '&& is_hidden = false' : '';
                 const folderFilter = `folder_id = "${folderId}"`;
                 const folderRes = await pb.collection('files').getList(currentPage, 50, {
-                    filter: `user_id = "${user.id}" && is_trash = false && (type ~ "image/" || type ~ "video/") && ${folderFilter}`,
+                    filter: `user_id = "${user.id}" && is_trash = false ${hiddenFilter} && (type ~ "image/" || type ~ "video/") && ${folderFilter}`,
                     sort: '-created',
                 });
                 mediaFiles = folderRes.items;
+                totalMediaCount = folderRes.totalItems;
                 setHasMore(folderRes.page < folderRes.totalPages);
 
                 try {
@@ -104,7 +109,7 @@ export default function Gallery() {
                 setHasMore(res.page < res.totalPages);
             }
 
-            setTotalItems(folderId ? mediaFiles.length : res.totalItems); // Simplified for folder view
+            setTotalItems(totalMediaCount);
 
             if (isLoadMore) {
                 setFiles(prev => [...prev, ...mediaFiles]);
@@ -402,7 +407,7 @@ export default function Gallery() {
                                     return (
                                         <div
                                             key={file.id}
-                                            className={`relative group rounded-2xl overflow-hidden bg-surface-50 border ${selectedItems.includes(file.id) ? 'border-brand shadow-md shadow-brand/10' : 'border-surface-100 shadow-sm hover:shadow-premium hover:border-brand/30'} transition-all w-full`}
+                                            className={`relative group rounded-2xl bg-surface-50 border ${selectedItems.includes(file.id) ? 'border-brand shadow-md shadow-brand/10' : 'border-surface-100 shadow-sm hover:shadow-premium hover:border-brand/30'} transition-all w-full ${activeMenu === file.id ? 'z-30' : 'z-auto'} ${file.is_hidden ? 'opacity-50' : 'opacity-100'}`}
                                         >
                                             <div
                                                 className="absolute inset-0 z-10 cursor-pointer"
@@ -477,6 +482,21 @@ export default function Gallery() {
                                                                 className="px-3 py-2 text-[13px] font-semibold text-surface-700 hover:bg-surface-50 hover:text-brand flex items-center gap-2"
                                                             >
                                                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download
+                                                            </button>
+                                                            <button
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    setActiveMenu(null);
+                                                                    await toggleHidden([{ type: 'file', id: file.id }], !file.is_hidden, user!.id);
+                                                                    fetchMedia();
+                                                                }}
+                                                                className="px-3 py-2 text-[13px] font-semibold text-surface-700 hover:bg-surface-50 hover:text-brand flex items-center gap-2"
+                                                            >
+                                                                {file.is_hidden ? (
+                                                                    <><Eye size={14} className="opacity-70" /> Unhide</>
+                                                                ) : (
+                                                                    <><EyeOff size={14} className="opacity-70" /> Hide</>
+                                                                )}
                                                             </button>
                                                             <div className="h-px bg-surface-100 my-1"></div>
                                                             <button
