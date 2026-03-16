@@ -69,6 +69,13 @@ export function FileViewerModal({ file, files, onClose, onRefetch, onRename, onM
     const activeIsPdf = activeFile.type === 'application/pdf' || activeFile.name.toLowerCase().endsWith('.pdf');
     const activeIsText = activeFile.type?.startsWith('text/') || activeFile.name.toLowerCase().endsWith('.txt') || activeFile.name.toLowerCase().endsWith('.md') || false;
 
+    // Preload next and previous files if they are images
+    const prevFile = isNavigatable ? files[currentIndex > 0 ? currentIndex - 1 : files.length - 1] : null;
+    const nextFile = isNavigatable ? files[currentIndex < files.length - 1 ? currentIndex + 1 : 0] : null;
+
+    const prevFileUrl = prevFile && prevFile.type?.startsWith('image/') ? pb.files.getURL(prevFile, prevFile.file) : null;
+    const nextFileUrl = nextFile && nextFile.type?.startsWith('image/') ? pb.files.getURL(nextFile, nextFile.file) : null;
+
     // Office File Support
     const officeExtensions = {
         excel: ['.xls', '.xlsx', '.csv', '.ods', '.xlsm', '.xlt', '.xltm', '.xltx', '.ots'],
@@ -422,9 +429,12 @@ export function FileViewerModal({ file, files, onClose, onRefetch, onRename, onM
                 >
                     {activeIsImage && (
                         <div className="relative group p-0 md:p-2 bg-white rounded-[2rem] shadow-premium">
+                            {prevFileUrl && <link rel="preload" as="image" href={prevFileUrl} />}
+                            {nextFileUrl && <link rel="preload" as="image" href={nextFileUrl} />}
                             <img
                                 src={fileUrl}
                                 alt={activeFile.name}
+                                fetchPriority="high"
                                 className="max-w-full h-full md:max-h-[75vh] object-contain select-none rounded-[1.5rem]"
                             />
                         </div>

@@ -40,12 +40,12 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                     <div className="text-right hidden sm:block">
                         <div className="text-xs font-semibold text-surface-900 truncate max-w-[120px] leading-tight">{user?.name || user?.username}</div>
                     </div>
-                    <button className="w-9 h-9 rounded-xl bg-white border border-surface-100 flex items-center justify-center text-surface-400 hover:text-brand hover:border-brand transition-all duration-300 shadow-sm active:scale-90 overflow-hidden group">
+                    <button className="w-9 h-9 rounded-full bg-white border border-surface-100 flex items-center justify-center text-surface-400 hover:text-brand hover:border-brand transition-all duration-300 shadow-sm active:scale-90 overflow-hidden group">
                         {user?.avatar ? (
                             <img
                                 src={pb.files.getURL(user, user.avatar, { thumb: '400x400' })}
                                 alt="Avatar"
-                                className="w-full h-full object-cover p-0.5 rounded-lg group-hover:scale-110 transition-transform"
+                                className="w-full h-full object-cover p-0.5 rounded-full group-hover:scale-110 transition-transform"
                             />
                         ) : (
                             <User size={18} />

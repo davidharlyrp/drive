@@ -376,7 +376,7 @@ export default function Gallery() {
                 ) : loading ? (
                     <div className="flex flex-col items-center justify-center py-24 gap-4">
                         <div className="animate-spin w-10 h-10 border-4 border-brand border-t-transparent rounded-full"></div>
-                        <span className="text-xs font-semibold text-surface-400 animate-pulse tracking-widest uppercase">Loading media...</span>
+                        <span className="text-xs font-semibold text-surface-400 animate-pulse tracking-widest">Loading media...</span>
                     </div>
                 ) : files.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 bg-white border border-surface-100 rounded-2xl shadow-soft animate-in fade-in duration-500 mx-auto max-w-2xl mt-12">
@@ -398,8 +398,8 @@ export default function Gallery() {
                                     const isVideo = file.type?.startsWith('video/') || false;
                                     const fileUrl = pb.files.getURL(file, file.file);
 
-                                    // Make sure we preserve aspect ratio, asking Pocketbase for width-only resize (e.g. 800 width, auto height)
-                                    const thumbnailUrl = isImage ? pb.files.getURL(file, file.file, { thumb: '800x0' }) : (isVideo ? `${fileUrl}#t=0.001` : null);
+                                    // Make sure we preserve aspect ratio, asking Pocketbase for width-only resize (e.g. 400 width, auto height)
+                                    const thumbnailUrl = isImage ? pb.files.getURL(file, file.file, { thumb: '400x0' }) : (isVideo ? `${fileUrl}#t=0.001` : null);
 
                                     // Mimic the mockups tags using file extensions
                                     const extension = file.name.split('.').pop()?.toUpperCase() || 'FILE';
@@ -521,10 +521,10 @@ export default function Gallery() {
                                             </div>
 
                                             {isImage && thumbnailUrl ? (
-                                                <img src={thumbnailUrl} alt={file.name} className="w-full h-auto block object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                <img src={thumbnailUrl} alt={file.name} loading="lazy" className="w-full h-auto block object-cover group-hover:scale-105 transition-transform duration-500" />
                                             ) : isVideo ? (
                                                 <div className="relative w-full h-full">
-                                                    <video src={thumbnailUrl || ''} className="w-full h-auto block object-cover group-hover:scale-105 transition-transform duration-500" preload="metadata" muted playsInline />
+                                                    <video src={thumbnailUrl || ''} preload="none" className="w-full h-auto block object-cover group-hover:scale-105 transition-transform duration-500" muted playsInline />
                                                     <div className="absolute inset-0 flex items-center justify-center bg-black/10">
                                                         <div className="w-10 h-10 bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/20">
                                                             <div className="w-0 h-0 border-t-4 border-t-transparent border-l-6 border-l-white border-b-4 border-b-transparent ml-1"></div>
