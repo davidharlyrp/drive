@@ -564,8 +564,8 @@ function FileItem({ file, viewMode, onClick, onRefetch, isSelected, onToggleSele
     const isPPT = officeExtensions.powerpoint.some(ext => file.name.toLowerCase().endsWith(ext));
 
     const getFileIcon = (size = 22) => {
-        if (isImage && thumbnailUrl) return <img src={thumbnailUrl} alt="" loading="lazy" className="w-full h-full object-cover" />;
-        if (isVideo) return <video src={thumbnailUrl || ''} className="w-full h-full object-cover" preload="none" muted playsInline />;
+        if (isImage && thumbnailUrl) return <img src={thumbnailUrl} alt="" className="w-full h-full object-cover" />;
+        if (isVideo) return <video src={thumbnailUrl || ''} className="w-full h-full object-cover" preload="metadata" muted playsInline />;
         if (isExcel) return <FileSpreadsheet className="text-emerald-500" size={size} />;
         if (isWord) return <FileEdit className="text-blue-500" size={size} />;
         if (isPPT) return <Presentation className="text-orange-500" size={size} />;

@@ -398,8 +398,8 @@ export default function Gallery() {
                                     const isVideo = file.type?.startsWith('video/') || false;
                                     const fileUrl = pb.files.getURL(file, file.file);
 
-                                    // Make sure we preserve aspect ratio, asking Pocketbase for width-only resize (e.g. 400 width, auto height)
-                                    const thumbnailUrl = isImage ? pb.files.getURL(file, file.file, { thumb: '400x0' }) : (isVideo ? `${fileUrl}#t=0.001` : null);
+                                    // Make sure we preserve aspect ratio, asking Pocketbase for width-only resize (e.g. 800 width, auto height)
+                                    const thumbnailUrl = isImage ? pb.files.getURL(file, file.file, { thumb: '800x0' }) : (isVideo ? `${fileUrl}#t=0.001` : null);
 
                                     // Mimic the mockups tags using file extensions
                                     const extension = file.name.split('.').pop()?.toUpperCase() || 'FILE';
@@ -521,10 +521,10 @@ export default function Gallery() {
                                             </div>
 
                                             {isImage && thumbnailUrl ? (
-                                                <img src={thumbnailUrl} alt={file.name} loading="lazy" className="w-full h-auto block object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                <img src={thumbnailUrl} alt={file.name} className="w-full h-auto block object-cover group-hover:scale-105 transition-transform duration-500" />
                                             ) : isVideo ? (
                                                 <div className="relative w-full h-full">
-                                                    <video src={thumbnailUrl || ''} preload="none" className="w-full h-auto block object-cover group-hover:scale-105 transition-transform duration-500" muted playsInline />
+                                                    <video src={thumbnailUrl || ''} className="w-full h-auto block object-cover group-hover:scale-105 transition-transform duration-500" preload="metadata" muted playsInline />
                                                     <div className="absolute inset-0 flex items-center justify-center bg-black/10">
                                                         <div className="w-10 h-10 bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/20">
                                                             <div className="w-0 h-0 border-t-4 border-t-transparent border-l-6 border-l-white border-b-4 border-b-transparent ml-1"></div>
