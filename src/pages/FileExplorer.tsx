@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { LazyMedia } from '../components/LazyMedia';
 import { Trash2, Edit2, MoreVertical, LayoutGrid, List, CheckSquare, Square, HardDrive, Plus, Upload, FolderPlus, ArrowDownUp, ArrowDown, ArrowUp, Type, Calendar, Database, FileText, Download, FolderInput, Star, File as FileIcon, Folder as FolderIcon, FileEdit, FileSpreadsheet, Presentation } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStorage } from '../hooks/useStorage';
@@ -1137,7 +1138,7 @@ function FileItem({ file, viewMode, onClick, isSelected, onToggleSelect, onRenam
     const isImage = file.type?.startsWith('image/') || false;
     const isVideo = file.type?.startsWith('video/') || false;
     const fileUrl = pb.files.getURL(file, file.file);
-    const thumbnailUrl = isImage ? pb.files.getURL(file, file.file, { thumb: '400x400' }) : (isVideo ? `${fileUrl}#t=0.001` : null);
+    const thumbnailUrl = isImage ? pb.files.getURL(file, file.file, { thumb: '200x200' }) : (isVideo ? `${fileUrl}#t=0.001` : null);
 
     const officeExtensions = {
         excel: ['.xls', '.xlsx', '.csv', '.ods', '.xlsm', '.xlt', '.xltm', '.xltx', '.ots'],
@@ -1150,8 +1151,8 @@ function FileItem({ file, viewMode, onClick, isSelected, onToggleSelect, onRenam
     const isPPT = officeExtensions.powerpoint.some(ext => file.name.toLowerCase().endsWith(ext));
 
     const getFileIcon = (size = 22) => {
-        if (isImage && thumbnailUrl) return <img src={thumbnailUrl} alt="" className="w-full h-full object-cover" />;
-        if (isVideo) return <video src={thumbnailUrl || ''} className="w-full h-full object-cover" preload="metadata" muted playsInline />;
+        if (isImage && thumbnailUrl) return <LazyMedia type="image" src={thumbnailUrl} alt={file.name} className="w-full h-full" />;
+        if (isVideo) return <LazyMedia type="video" src={thumbnailUrl || ''} className="w-full h-full" />;
         if (isExcel) return <FileSpreadsheet className="text-emerald-500" size={size} />;
         if (isWord) return <FileEdit className="text-blue-500" size={size} />;
         if (isPPT) return <Presentation className="text-orange-500" size={size} />;

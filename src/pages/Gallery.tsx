@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { LazyMedia } from '../components/LazyMedia';
 import { useSearchParams } from 'react-router-dom';
 import { Image as ImageIcon, CheckSquare, Square, ArrowDownUp, ArrowDown, ArrowUp, X, FolderInput, Trash2, MoreVertical, Edit2, Star, Eye, EyeOff } from 'lucide-react';
 import { pb } from '../lib/pb';
@@ -75,7 +76,7 @@ export default function Gallery() {
         try {
             // Fetch only the user's non-trashed media files directly via API filter
             const hiddenFilter = !showHidden ? '&& is_hidden = false' : '';
-            const res = await pb.collection('files').getList(currentPage, 50, {
+            const res = await pb.collection('files').getList(currentPage, 30, {
                 filter: `user_id = "${user.id}" && is_trash = false ${hiddenFilter} && (type ~ "image/" || type ~ "video/")`,
                 sort: '-created',
             });
@@ -89,7 +90,7 @@ export default function Gallery() {
                 // If folderId exists, we should probably add it to the API filter for correct pagination
                 const hiddenFilter = !showHidden ? '&& is_hidden = false' : '';
                 const folderFilter = `folder_id = "${folderId}"`;
-                const folderRes = await pb.collection('files').getList(currentPage, 50, {
+                const folderRes = await pb.collection('files').getList(currentPage, 30, {
                     filter: `user_id = "${user.id}" && is_trash = false ${hiddenFilter} && (type ~ "image/" || type ~ "video/") && ${folderFilter}`,
                     sort: '-created',
                 });
@@ -398,8 +399,8 @@ export default function Gallery() {
                                     const isVideo = file.type?.startsWith('video/') || false;
                                     const fileUrl = pb.files.getURL(file, file.file);
 
-                                    // Make sure we preserve aspect ratio, asking Pocketbase for width-only resize (e.g. 800 width, auto height)
-                                    const thumbnailUrl = isImage ? pb.files.getURL(file, file.file, { thumb: '800x0' }) : (isVideo ? `${fileUrl}#t=0.001` : null);
+                                    // Make sure we preserve aspect ratio, asking Pocketbase for width-only resize (e.g. 400 width, auto height)
+                                    const thumbnailUrl = isImage ? pb.files.getURL(file, file.file, { thumb: '400x0' }) : (isVideo ? `${fileUrl}#t=0.001` : null);
 
                                     // Mimic the mockups tags using file extensions
                                     const extension = file.name.split('.').pop()?.toUpperCase() || 'FILE';
@@ -521,16 +522,9 @@ export default function Gallery() {
                                             </div>
 
                                             {isImage && thumbnailUrl ? (
-                                                <img src={thumbnailUrl} alt={file.name} className="w-full h-auto block object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                <LazyMedia type="image" src={thumbnailUrl} alt={file.name} className="w-full h-full aspect-square group-hover:scale-105 transition-transform duration-500" />
                                             ) : isVideo ? (
-                                                <div className="relative w-full h-full">
-                                                    <video src={thumbnailUrl || ''} className="w-full h-auto block object-cover group-hover:scale-105 transition-transform duration-500" preload="metadata" muted playsInline />
-                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/10">
-                                                        <div className="w-10 h-10 bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/20">
-                                                            <div className="w-0 h-0 border-t-4 border-t-transparent border-l-6 border-l-white border-b-4 border-b-transparent ml-1"></div>
-                                                        </div>
-                                                    </div>
-                                                </div>
+                                                <LazyMedia type="video" src={thumbnailUrl || ''} className="w-full aspect-video group-hover:scale-105 transition-transform duration-500" showPlayIcon />
                                             ) : null}
                                         </div>
                                     );

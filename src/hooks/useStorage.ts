@@ -3,7 +3,7 @@ import { pb } from '../lib/pb';
 import type { RecordModel } from 'pocketbase';
 import { useAuthStore } from '../store/useAuthStore';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 30;
 
 export function useStorage(folderId: string, isTrashView: boolean = false, isStarredView: boolean = false, isSharedView: boolean = false, showHidden: boolean = false) {
     const [folders, setFolders] = useState<RecordModel[]>([]);
